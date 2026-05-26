@@ -87,3 +87,34 @@ ros2 run rqt_image_view rqt_image_view /oak/rgb/image_raw
 For calibration captures, fixed lighting and a fixed working distance are
 preferable. Once the target distance is known, manual focus via the DepthAI
 driver parameters can be tested instead of relying on autofocus.
+
+## GUI sample capture
+
+For repeated hand-eye samples, keep the camera driver running and start the GUI:
+
+```bash
+ros2 run oak_camera_calibration oak_sample_gui
+```
+
+The GUI uses the 10x7 ArUco GridBoard with `DICT_4X4_250`, 30 mm markers, and
+10 mm separation. It detects the board with a downscaled full-image pass, then
+refines inside an ROI so the full 8k image is never passed directly to
+`cv2.aruco.detectMarkers()`.
+
+Keys:
+
+- `s`: save one sample
+- `d`: toggle marker detection
+- `q` or `Esc`: close the GUI
+
+Samples are appended to `~/oak_handeye_samples` as `sample_000`, `sample_001`,
+and so on. Closing the GUI never deletes samples; delete files manually only
+when you really want to discard them.
+
+Each sample contains:
+
+- raw PNG
+- optional rectified PNG
+- annotated PNG
+- `CameraInfo` YAML
+- JSON metadata with board model, marker IDs, ROI, pose, and reprojection error
