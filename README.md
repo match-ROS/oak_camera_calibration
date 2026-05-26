@@ -101,6 +101,20 @@ The GUI uses the 10x7 ArUco GridBoard with `DICT_4X4_250`, 30 mm markers, and
 refines inside an ROI so the full 8k image is never passed directly to
 `cv2.aruco.detectMarkers()`.
 
+By default each saved sample also stores the current TF from `base_link` to `tool0`.
+If your UR TCP frame has a different name, pass it explicitly:
+
+```bash
+ros2 run oak_camera_calibration oak_sample_gui --ros-args \
+  -p robot_base_frame:=base_link \
+  -p robot_tcp_frame:=tool0
+```
+
+The HUD shows whether this TF is available. With the default
+`require_robot_pose:=true` and `require_detection_pose:=true`, pressing `s` only
+writes a sample if the image, `CameraInfo`, marker pose, and robot TF are all
+available.
+
 Keys:
 
 - `s`: save one sample
@@ -117,4 +131,18 @@ Each sample contains:
 - optional rectified PNG
 - annotated PNG
 - `CameraInfo` YAML
-- JSON metadata with board model, marker IDs, ROI, pose, and reprojection error
+- JSON metadata with board model, marker IDs, ROI, pose, reprojection error, and
+  the UR base-to-TCP transform
+
+## Compute hand-eye transform
+
+After capturing multiple poses, compute the camera transform relative to the TCP:
+
+```bash
+ros2 run oak_camera_calibration compute_handeye --samples-dir ~/oak_handeye_samples
+```
+
+The tool uses OpenCV's eye-in-hand calibration and prints `tcp <- camera`,
+per-sample translational/rotational consistency, and the marker reprojection
+error. Samples without robot TF are skipped. Large residuals are a good hint
+that a sample should be inspected and deleted manually before recomputing.

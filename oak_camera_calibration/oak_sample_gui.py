@@ -10,9 +10,12 @@ import numpy as np
 import rclpy
 import yaml
 from cv_bridge import CvBridge
+from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
+from rclpy.time import Time
 from sensor_msgs.msg import CameraInfo, Image
+from tf2_ros import Buffer, TransformException, TransformListener
 
 from oak_camera_calibration.aruco_grid_detector import ArucoGridDetector
 
@@ -28,6 +31,11 @@ class OakSampleGui(Node):
         self.declare_parameter("display_max_side", 1600)
         self.declare_parameter("detect_every_n_frames", 1)
         self.declare_parameter("save_rectified", True)
+        self.declare_parameter("robot_base_frame", "base_link")
+        self.declare_parameter("robot_tcp_frame", "tool0")
+        self.declare_parameter("tf_timeout_sec", 0.5)
+        self.declare_parameter("require_robot_pose", True)
+        self.declare_parameter("require_detection_pose", True)
 
         self.declare_parameter("markers_x", 10)
         self.declare_parameter("markers_y", 7)
@@ -52,6 +60,9 @@ class OakSampleGui(Node):
         self.sample_prefix = self.get_parameter("sample_prefix").value
         os.makedirs(self.output_dir, exist_ok=True)
         self.sample_idx = self._next_sample_idx()
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.last_tf_ok = False
 
         self.detector = ArucoGridDetector(
             markers_x=self.get_parameter("markers_x").value,
@@ -78,6 +89,11 @@ class OakSampleGui(Node):
         self.get_logger().info(f"Listening for images on {image_topic}")
         self.get_logger().info(f"Listening for CameraInfo on {camera_info_topic}")
         self.get_logger().info(f"Writing samples to {self.output_dir}")
+        self.get_logger().info(
+            "Saving robot pose from "
+            f"{self.get_parameter('robot_base_frame').value} -> "
+            f"{self.get_parameter('robot_tcp_frame').value}"
+        )
         self.get_logger().info("Keys: s=save sample, d=toggle detection, q/ESC=quit")
 
     def _on_image(self, msg):
@@ -158,6 +174,23 @@ class OakSampleGui(Node):
             self.get_logger().warn("No CameraInfo available yet; sample not saved.")
             return
 
+        robot_pose = self._lookup_robot_pose()
+        if robot_pose is None and bool(self.get_parameter("require_robot_pose").value):
+            self.get_logger().warn(
+                "No robot TF available; sample not saved. "
+                "Check robot_base_frame/robot_tcp_frame or set require_robot_pose:=false."
+            )
+            return
+        if (
+            bool(self.get_parameter("require_detection_pose").value)
+            and not self._has_detection_pose()
+        ):
+            self.get_logger().warn(
+                "No board pose available; sample not saved. "
+                "Move the board into view or set require_detection_pose:=false."
+            )
+            return
+
         base = f"{self.sample_prefix}_{self.sample_idx:03d}"
         base_path = os.path.join(self.output_dir, base)
         raw_path = base_path + "_raw.png"
@@ -193,6 +226,7 @@ class OakSampleGui(Node):
             annotated_path,
             camera_info_path,
             detection,
+            robot_pose,
         )
         with open(sample_path, "w", encoding="utf-8") as stream:
             json.dump(data, stream, indent=2)
@@ -211,6 +245,7 @@ class OakSampleGui(Node):
         annotated_path,
         camera_info_path,
         detection,
+        robot_pose,
     ):
         detection_ok = detection is not None and detection["marker_ids"] is not None
         pose = None
@@ -236,6 +271,13 @@ class OakSampleGui(Node):
             "annotated_image_file": os.path.basename(annotated_path),
             "camera_info_file": os.path.basename(camera_info_path),
             "camera_frame": self.latest_camera_info.header.frame_id,
+            "robot_pose": robot_pose
+            if robot_pose is not None
+            else {
+                "ok": False,
+                "parent_frame": self.get_parameter("robot_base_frame").value,
+                "child_frame": self.get_parameter("robot_tcp_frame").value,
+            },
             "board_model": self.detector.board_metadata(),
             "detection": {
                 "ok": bool(detection_ok),
@@ -254,9 +296,16 @@ class OakSampleGui(Node):
             marker_count = self.latest_detection["num_markers"]
             if self.latest_detection.get("pose") is not None:
                 pose_text = "pose: yes"
+        self.last_tf_ok = self._can_lookup_robot_pose()
+        tf_text = (
+            f"tf {self.get_parameter('robot_base_frame').value}->"
+            f"{self.get_parameter('robot_tcp_frame').value}: "
+            f"{'yes' if self.last_tf_ok else 'no'}"
+        )
 
         lines = [
             f"markers: {marker_count}  {pose_text}",
+            tf_text,
             f"next: {self.sample_prefix}_{self.sample_idx:03d}   s=save d=detect q=quit",
             f"detection: {'on' if self.detect_enabled else 'off'}",
         ]
@@ -353,6 +402,56 @@ class OakSampleGui(Node):
         }
         with open(path, "w", encoding="utf-8") as stream:
             yaml.safe_dump(data, stream, sort_keys=False)
+
+    def _can_lookup_robot_pose(self):
+        base_frame = self.get_parameter("robot_base_frame").value
+        tcp_frame = self.get_parameter("robot_tcp_frame").value
+        return self.tf_buffer.can_transform(base_frame, tcp_frame, Time())
+
+    def _has_detection_pose(self):
+        return (
+            self.latest_detection is not None
+            and self.latest_detection.get("pose") is not None
+        )
+
+    def _lookup_robot_pose(self):
+        base_frame = self.get_parameter("robot_base_frame").value
+        tcp_frame = self.get_parameter("robot_tcp_frame").value
+        timeout_sec = float(self.get_parameter("tf_timeout_sec").value)
+        try:
+            transform = self.tf_buffer.lookup_transform(
+                base_frame,
+                tcp_frame,
+                Time(),
+                timeout=Duration(seconds=timeout_sec),
+            )
+        except TransformException as exc:
+            self.get_logger().warn(f"Could not look up TF {base_frame}->{tcp_frame}: {exc}")
+            return None
+
+        translation = transform.transform.translation
+        rotation = transform.transform.rotation
+        stamp = transform.header.stamp
+        return {
+            "ok": True,
+            "parent_frame": transform.header.frame_id,
+            "child_frame": transform.child_frame_id,
+            "stamp": {
+                "sec": int(stamp.sec),
+                "nanosec": int(stamp.nanosec),
+            },
+            "translation": [
+                float(translation.x),
+                float(translation.y),
+                float(translation.z),
+            ],
+            "quaternion_xyzw": [
+                float(rotation.x),
+                float(rotation.y),
+                float(rotation.z),
+                float(rotation.w),
+            ],
+        }
 
     def _next_sample_idx(self):
         pattern = os.path.join(self.output_dir, f"{self.sample_prefix}_*.json")
