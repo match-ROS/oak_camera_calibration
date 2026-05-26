@@ -50,10 +50,13 @@ By default the snapshot tool listens to:
 - `/oak/rgb/image_raw`
 - `/oak/rgb/camera_info`
 
-and writes to `~/oak_handeye_samples`. It stores the raw image, the received
-`CameraInfo`, and a rectified PNG computed from that `CameraInfo`. For hand-eye
-calibration it is usually best to keep the raw image plus distortion
-coefficients and let the calibration/detection code use both explicitly.
+and writes to `~/oak_handeye_samples`. It ignores the first frames while
+auto-exposure and autofocus settle, skips very dark frames, then stores the
+sharpest frame from a short burst. It writes the raw image, the received
+`CameraInfo`, image metrics, and a rectified PNG computed from that
+`CameraInfo`. For hand-eye calibration it is usually best to keep the raw image
+plus distortion coefficients and let the calibration/detection code use both
+explicitly.
 
 You can override topics or output path like this:
 
@@ -64,3 +67,23 @@ ros2 run oak_camera_calibration capture_oak_snapshot --ros-args \
   -p output_dir:=~/oak_handeye_samples \
   -p save_rectified:=true
 ```
+
+Useful snapshot parameters while tuning image quality:
+
+```bash
+ros2 run oak_camera_calibration capture_oak_snapshot --ros-args \
+  -p warmup_frames:=20 \
+  -p select_frames:=20 \
+  -p min_mean_intensity:=10.0 \
+  -p timeout_sec:=60.0
+```
+
+If images remain blurry after warmup, inspect live focus first:
+
+```bash
+ros2 run rqt_image_view rqt_image_view /oak/rgb/image_raw
+```
+
+For calibration captures, fixed lighting and a fixed working distance are
+preferable. Once the target distance is known, manual focus via the DepthAI
+driver parameters can be tested instead of relying on autofocus.
