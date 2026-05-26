@@ -1,0 +1,25 @@
+/oak:
+  ros__parameters:
+    driver:
+      i_enable_ir: false
+      i_pipeline_auto_calibration_mode: ''
+    pipeline_gen:
+      i_enable_sync: false
+      i_nn_type: none
+      i_pipeline_type: rgb
+    rgb:
+      i_board_socket_id: 0
+      i_disable_node: false
+      i_enable_feature_tracker: false
+      i_enable_lazy_publisher: false
+      i_enable_nn: false
+      i_fps: 5.0
+      i_height: 6000
+      i_low_bandwidth: false
+      i_max_q_size: 2
+      i_publish_compressed: false
+      i_publish_raw: false
+      i_publish_topic: true
+      i_synced: false
+      i_undistorted: false
+      i_width: 8000
