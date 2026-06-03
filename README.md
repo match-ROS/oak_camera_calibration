@@ -146,3 +146,47 @@ The tool uses OpenCV's eye-in-hand calibration and prints `tcp <- camera`,
 per-sample translational/rotational consistency, and the marker reprojection
 error. Samples without robot TF are skipped. Large residuals are a good hint
 that a sample should be inspected and deleted manually before recomputing.
+
+## Semi-automatic ChArUco capture
+
+For a guided hardware session, start the camera and robot first, then move the
+camera roughly centered in front of the ChArUco board. The session estimates the
+board pose from this first view, generates nearby viewpoints on a sphere around
+the board, and writes the same `sample_*.json` files used by
+`compute_handeye`. By default it writes to `~/oak_charuco_handeye_samples` so
+older ArUco-Grid samples are not mixed into the solve.
+
+Dry-run the target poses first:
+
+```bash
+ros2 run oak_camera_calibration semi_auto_handeye_session --ros-args \
+  -p robot_name:=mur620 \
+  -p arm:=l \
+  -p robot_base_frame:=mur620/UR10_l/base_link \
+  -p robot_tcp_frame:=mur620/UR10_l/tool0 \
+  -p action_name:=/mur620/jparse_move_l \
+  -p move_enabled:=false
+```
+
+When the generated poses look plausible, enable J-PARSE motion:
+
+```bash
+ros2 run oak_camera_calibration semi_auto_handeye_session --ros-args \
+  -p robot_name:=mur620 \
+  -p arm:=l \
+  -p robot_base_frame:=mur620/UR10_l/base_link \
+  -p robot_tcp_frame:=mur620/UR10_l/tool0 \
+  -p action_name:=/mur620/jparse_move_l \
+  -p move_enabled:=true
+```
+
+The terminal prompts before every move and before every saved sample. After at
+least three usable samples it updates the current `tcp <- camera` estimate and
+stores the latest session state in `semi_auto_session_state.yaml`.
+
+The saved ChArUco samples can be solved explicitly with:
+
+```bash
+ros2 run oak_camera_calibration compute_handeye \
+  --samples-dir ~/oak_charuco_handeye_samples
+```

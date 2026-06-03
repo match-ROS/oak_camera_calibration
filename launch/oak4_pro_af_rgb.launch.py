@@ -7,6 +7,7 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     params_file = LaunchConfiguration("params_file")
+    parent_frame = LaunchConfiguration("parent_frame")
 
     oak_driver = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -24,7 +25,7 @@ def generate_launch_description():
             "params_file": params_file,
             "camera_model": "OAK4-D",
             "override_cam_model": "true",
-            "parent_frame": "tool0",
+            "parent_frame": parent_frame,
         }.items(),
     )
 
@@ -40,6 +41,11 @@ def generate_launch_description():
                     ]
                 ),
                 description="DepthAI ROS driver parameter file.",
+            ),
+            DeclareLaunchArgument(
+                "parent_frame",
+                default_value="mur620/UR10_r/tool0",
+                description="Parent frame for OAK calibration TF publication.",
             ),
             oak_driver,
         ]
