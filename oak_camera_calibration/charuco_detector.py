@@ -65,7 +65,18 @@ class CharucoDetector:
 
         coarse = self._detect_scaled(gray, self.coarse_max_side)
         if coarse["ids"] is None or len(coarse["ids"]) == 0:
-            return self._result(None, None, None, None, None, image_w, image_h, None)
+            rejected = self._scale_corners(coarse["rejected"], 1.0 / coarse["scale"])
+            return self._result(
+                None,
+                None,
+                None,
+                None,
+                None,
+                image_w,
+                image_h,
+                None,
+                rejected_corners=rejected,
+            )
 
         coarse_corners = self._scale_corners(coarse["corners"], 1.0 / coarse["scale"])
         roi = self._roi_from_corners(coarse_corners, image_w, image_h)
@@ -77,6 +88,10 @@ class CharucoDetector:
             marker_corners = coarse_corners
             marker_ids = coarse["ids"]
             used_roi = None
+            rejected_corners = self._scale_corners(
+                coarse["rejected"],
+                1.0 / coarse["scale"],
+            )
         else:
             marker_corners = self._scale_corners(
                 refined["corners"],
@@ -85,6 +100,11 @@ class CharucoDetector:
             marker_corners = self._offset_corners(marker_corners, x, y)
             marker_ids = refined["ids"]
             used_roi = roi
+            rejected_corners = self._offset_corners(
+                self._scale_corners(refined["rejected"], 1.0 / refined["scale"]),
+                x,
+                y,
+            )
 
         charuco_corners = None
         charuco_ids = None
@@ -127,12 +147,25 @@ class CharucoDetector:
             image_h,
             used_roi,
             reprojection_error,
+            rejected_corners,
         )
 
-    def draw_detection(self, image_bgr, detection, camera_matrix=None, distortion_coeffs=None):
+    def draw_detection(
+        self,
+        image_bgr,
+        detection,
+        camera_matrix=None,
+        distortion_coeffs=None,
+        draw_rejected=False,
+    ):
         view = image_bgr.copy()
         if detection is None:
             return view
+
+        if draw_rejected and detection.get("rejected_corners"):
+            for corner in detection["rejected_corners"]:
+                points = corner.reshape(-1, 2).astype(int)
+                cv2.polylines(view, [points], True, (70, 70, 230), 2, cv2.LINE_AA)
 
         if detection.get("marker_ids") is not None:
             cv2.aruco.drawDetectedMarkers(
@@ -140,6 +173,21 @@ class CharucoDetector:
                 detection["marker_corners"],
                 detection["marker_ids"],
             )
+            for marker_id, corner in zip(
+                detection["marker_ids"].flatten(),
+                detection["marker_corners"],
+            ):
+                center = corner.reshape(-1, 2).mean(axis=0).astype(int)
+                cv2.putText(
+                    view,
+                    str(int(marker_id)),
+                    tuple(center),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (255, 255, 0),
+                    2,
+                    cv2.LINE_AA,
+                )
 
         if detection.get("charuco_ids") is not None:
             cv2.aruco.drawDetectedCornersCharuco(
@@ -310,6 +358,7 @@ class CharucoDetector:
         image_h,
         roi,
         reprojection_error=None,
+        rejected_corners=None,
     ):
         return {
             "image_size": (int(image_w), int(image_h)),
@@ -319,6 +368,10 @@ class CharucoDetector:
             "charuco_ids": charuco_ids,
             "num_markers": 0 if marker_ids is None else int(len(marker_ids)),
             "num_charuco_corners": 0 if charuco_ids is None else int(len(charuco_ids)),
+            "num_rejected_candidates": 0
+            if rejected_corners is None
+            else int(len(rejected_corners)),
+            "rejected_corners": rejected_corners,
             "pose": pose,
             "roi": roi,
             "reprojection_error_px": reprojection_error,

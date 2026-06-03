@@ -52,10 +52,14 @@ class SemiAutoHandeyeSession(Node):
         self.declare_parameter("gui_enabled", True)
         self.declare_parameter("keyboard_jog_enabled", False)
         self.declare_parameter("jog_twist_topic", "")
-        self.declare_parameter("jog_linear_velocity", 0.015)
-        self.declare_parameter("jog_angular_velocity", 0.08)
-        self.declare_parameter("jog_burst_sec", 0.16)
+        self.declare_parameter("jog_linear_velocity", 0.03)
+        self.declare_parameter("jog_angular_velocity", 0.25)
+        self.declare_parameter("jog_linear_acceleration", 0.12)
+        self.declare_parameter("jog_angular_acceleration", 1.0)
+        self.declare_parameter("jog_hold_timeout", 1.0)
+        self.declare_parameter("log_key_codes", True)
         self.declare_parameter("display_max_side", 1600)
+        self.declare_parameter("draw_rejected_markers", True)
         self.declare_parameter("planning_frame", "")
         self.declare_parameter("samples", 12)
         self.declare_parameter("sphere_radius_m", 0.0)
@@ -68,9 +72,9 @@ class SemiAutoHandeyeSession(Node):
 
         self.declare_parameter("squares_x", 14)
         self.declare_parameter("squares_y", 9)
-        self.declare_parameter("square_length_m", 0.020)
-        self.declare_parameter("marker_length_m", 0.015)
-        self.declare_parameter("dictionary", "DICT_5X5_100")
+        self.declare_parameter("square_length_m", 0.065)
+        self.declare_parameter("marker_length_m", 0.048)
+        self.declare_parameter("dictionary", "DICT_4X4_250")
         self.declare_parameter("min_charuco_corners", 8)
         self.declare_parameter("coarse_max_side", 1600)
         self.declare_parameter("refine_max_side", 2200)
@@ -107,6 +111,14 @@ class SemiAutoHandeyeSession(Node):
             "jog_twist_topic",
             f"/{robot_name}/jparse_velocity_controller_{arm}/twist_cmd",
         )
+        self.jog_target_linear = np.zeros(3, dtype=np.float64)
+        self.jog_target_angular = np.zeros(3, dtype=np.float64)
+        self.jog_current_linear = np.zeros(3, dtype=np.float64)
+        self.jog_current_angular = np.zeros(3, dtype=np.float64)
+        self.last_jog_key_time = 0.0
+        self.last_jog_update_time = time.monotonic()
+        self.jog_rotation_mode = False
+        self.last_key_text = "none"
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -230,8 +242,8 @@ class SemiAutoHandeyeSession(Node):
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         self.get_logger().info(
             "GUI keys: c=save sample/frame, q=quit, .=stop, "
-            "w/x=+/-X, a/d=+/-Y, r/f=+/-Z, "
-            "i/k=+/-RX, j/l=+/-RY, u/o=+/-RZ"
+            "arrows=XY, PgUp/PgDn=Z, Ctrl+arrows/PgUp/PgDn=rotation. "
+            "If Ctrl is not detected by OpenCV, use i/k j/l u/o or press m to toggle rotation mode."
         )
 
         try:
@@ -239,13 +251,14 @@ class SemiAutoHandeyeSession(Node):
                 frame = self.current_frame_detection()
                 view = self.render_gui_frame(frame)
                 cv2.imshow(window_name, view)
-                key = cv2.waitKey(20) & 0xFF
-                if key == 255:
+                self.update_jog_output()
+                key = cv2.waitKeyEx(20)
+                if key == -1:
                     continue
                 if not self.handle_gui_key(key, frame):
                     break
         finally:
-            self.publish_jog_twist([0.0, 0.0, 0.0], [0.0, 0.0, 0.0], force=True)
+            self.stop_jog(force=True)
             cv2.destroyWindow(window_name)
 
     def current_frame_detection(self):
@@ -318,24 +331,54 @@ class SemiAutoHandeyeSession(Node):
                 detection,
                 camera_matrix,
                 distortion_coeffs,
+                draw_rejected=bool(self.get_parameter("draw_rejected_markers").value),
             )
 
         view = self.resize_for_display(view)
         status_lines = [
             self.last_wait_status,
+            self.detection_summary(detection),
+            (
+                f"board: {self.detector.dictionary_name} "
+                f"{self.detector.squares_x}x{self.detector.squares_y} "
+                f"square={self.detector.square_length_m * 1000.0:.0f}mm "
+                f"marker={self.detector.marker_length_m * 1000.0:.0f}mm"
+            ),
             f"next sample: {self.sample_prefix}_{self.sample_idx:03d}",
             (
                 "keyboard jog ON"
                 if self.keyboard_jog_enabled
                 else "keyboard jog OFF"
             ),
-            "c=save q=quit .=stop w/x a/d r/f linear, i/k j/l u/o angular",
+            f"mode: {'rotation' if self.jog_rotation_mode else 'translation'}",
+            f"last key: {self.last_key_text}",
+            "c=save q=quit .=stop arrows=XY PgUp/PgDn=Z Ctrl/m or i/k j/l u/o=rotation",
         ]
         self.draw_text_lines(view, status_lines)
         return view
 
+    def detection_summary(self, detection):
+        if detection is None:
+            return "detection: no image/camera model yet"
+        reproj = detection.get("reprojection_error_px") or {}
+        reproj_text = "n/a" if "mean" not in reproj else f"{reproj['mean']:.2f}px"
+        pose_text = "pose yes" if detection.get("pose") is not None else "pose no"
+        return (
+            "detection: "
+            f"markers={detection.get('num_markers', 0)} "
+            f"charuco={detection.get('num_charuco_corners', 0)} "
+            f"rejected={detection.get('num_rejected_candidates', 0)} "
+            f"{pose_text} reproj={reproj_text}"
+        )
+
     def handle_gui_key(self, key, frame):
-        char = chr(key).lower() if 0 <= key < 128 else ""
+        char = self.ascii_char(key)
+        self.last_key_text = (
+            f"{key} ({self.key_name(key) or char or 'unknown'}, "
+            f"{'ctrl' if self.key_has_ctrl(key) else 'no-ctrl'})"
+        )
+        if bool(self.get_parameter("log_key_codes").value):
+            self.get_logger().info(f"GUI key: {self.last_key_text}")
         if char == "q" or key == 27:
             return False
         if char == "c":
@@ -348,33 +391,149 @@ class SemiAutoHandeyeSession(Node):
                 self.save_debug_frame(frame)
             return True
         if char == ".":
-            self.publish_jog_twist([0.0, 0.0, 0.0], [0.0, 0.0, 0.0], force=True)
+            self.stop_jog(force=True)
+            return True
+        if char == "m":
+            self.jog_rotation_mode = not self.jog_rotation_mode
+            self.get_logger().info(
+                f"Jog mode: {'rotation' if self.jog_rotation_mode else 'translation'}"
+            )
             return True
 
-        linear, angular = self.jog_command_from_key(char)
+        linear, angular = self.jog_command_from_key(key)
         if linear is None:
             return True
-        self.publish_jog_twist(linear, angular)
+        self.set_jog_target(linear, angular)
         return True
 
-    def jog_command_from_key(self, char):
+    def jog_command_from_key(self, key):
         v = float(self.get_parameter("jog_linear_velocity").value)
         w = float(self.get_parameter("jog_angular_velocity").value)
-        mapping = {
-            "w": ([v, 0.0, 0.0], [0.0, 0.0, 0.0]),
-            "x": ([-v, 0.0, 0.0], [0.0, 0.0, 0.0]),
-            "a": ([0.0, v, 0.0], [0.0, 0.0, 0.0]),
-            "d": ([0.0, -v, 0.0], [0.0, 0.0, 0.0]),
-            "r": ([0.0, 0.0, v], [0.0, 0.0, 0.0]),
-            "f": ([0.0, 0.0, -v], [0.0, 0.0, 0.0]),
-            "i": ([0.0, 0.0, 0.0], [w, 0.0, 0.0]),
-            "k": ([0.0, 0.0, 0.0], [-w, 0.0, 0.0]),
-            "j": ([0.0, 0.0, 0.0], [0.0, w, 0.0]),
-            "l": ([0.0, 0.0, 0.0], [0.0, -w, 0.0]),
-            "u": ([0.0, 0.0, 0.0], [0.0, 0.0, w]),
-            "o": ([0.0, 0.0, 0.0], [0.0, 0.0, -w]),
+        key_name = self.key_name(key)
+        if key_name is None:
+            return None, None
+
+        direct_rotation = key_name in ("i", "j", "k", "l", "u", "o")
+        rotate = self.jog_rotation_mode or self.key_has_ctrl(key)
+        zero = [0.0, 0.0, 0.0]
+        translation = {
+            "left": ([-v, 0.0, 0.0], zero),
+            "right": ([v, 0.0, 0.0], zero),
+            "up": ([0.0, v, 0.0], zero),
+            "down": ([0.0, -v, 0.0], zero),
+            "page_up": ([0.0, 0.0, v], zero),
+            "page_down": ([0.0, 0.0, -v], zero),
+            "a": ([-v, 0.0, 0.0], zero),
+            "d": ([v, 0.0, 0.0], zero),
+            "w": ([0.0, v, 0.0], zero),
+            "x": ([0.0, -v, 0.0], zero),
+            "r": ([0.0, 0.0, v], zero),
+            "f": ([0.0, 0.0, -v], zero),
         }
-        return mapping.get(char, (None, None))
+        rotation = {
+            "left": (zero, [w, 0.0, 0.0]),
+            "right": (zero, [-w, 0.0, 0.0]),
+            "up": (zero, [0.0, w, 0.0]),
+            "down": (zero, [0.0, -w, 0.0]),
+            "page_up": (zero, [0.0, 0.0, w]),
+            "page_down": (zero, [0.0, 0.0, -w]),
+            "j": (zero, [w, 0.0, 0.0]),
+            "l": (zero, [-w, 0.0, 0.0]),
+            "i": (zero, [0.0, w, 0.0]),
+            "k": (zero, [0.0, -w, 0.0]),
+            "u": (zero, [0.0, 0.0, w]),
+            "o": (zero, [0.0, 0.0, -w]),
+        }
+        return (rotation if rotate or direct_rotation else translation).get(key_name, (None, None))
+
+    def key_name(self, key):
+        low = key & 0xFFFF
+        arrow_codes = {
+            81: "left",
+            82: "up",
+            83: "right",
+            84: "down",
+            85: "page_up",
+            86: "page_down",
+            2424832: "left",
+            2490368: "up",
+            2555904: "right",
+            2621440: "down",
+            2162688: "page_up",
+            2228224: "page_down",
+            65361: "left",
+            65362: "up",
+            65363: "right",
+            65364: "down",
+            65365: "page_up",
+            65366: "page_down",
+        }
+        if key in arrow_codes:
+            return arrow_codes[key]
+        if low in arrow_codes:
+            return arrow_codes[low]
+        char = self.ascii_char(key)
+        if char in ("w", "a", "d", "x", "r", "f", "i", "j", "k", "l", "u", "o"):
+            return char
+        return None
+
+    def ascii_char(self, key):
+        if 0 <= key < 128:
+            return chr(key).lower()
+        return ""
+
+    def key_has_ctrl(self, key):
+        # OpenCV does not expose modifiers consistently across HighGUI backends.
+        # Qt builds usually encode Ctrl as 0x04000000; other backends vary.
+        return (
+            bool(key & 0x04000000)
+            or bool(key & 0x00040000)
+            or bool(key & 0x00100000)
+        )
+
+    def set_jog_target(self, linear, angular):
+        if not self.keyboard_jog_enabled:
+            self.get_logger().warn(
+                "Keyboard jog is disabled. Start with keyboard_jog_enabled:=true to move."
+            )
+            return
+        self.jog_target_linear = np.asarray(linear, dtype=np.float64)
+        self.jog_target_angular = np.asarray(angular, dtype=np.float64)
+        self.last_jog_key_time = time.monotonic()
+
+    def update_jog_output(self):
+        if not self.keyboard_jog_enabled:
+            return
+
+        now = time.monotonic()
+        dt = max(1.0e-4, now - self.last_jog_update_time)
+        self.last_jog_update_time = now
+        if now - self.last_jog_key_time > float(self.get_parameter("jog_hold_timeout").value):
+            self.jog_target_linear = np.zeros(3, dtype=np.float64)
+            self.jog_target_angular = np.zeros(3, dtype=np.float64)
+
+        self.jog_current_linear = slew_vector(
+            self.jog_current_linear,
+            self.jog_target_linear,
+            float(self.get_parameter("jog_linear_acceleration").value) * dt,
+        )
+        self.jog_current_angular = slew_vector(
+            self.jog_current_angular,
+            self.jog_target_angular,
+            float(self.get_parameter("jog_angular_acceleration").value) * dt,
+        )
+
+        if (
+            np.linalg.norm(self.jog_current_linear) > 1.0e-5
+            or np.linalg.norm(self.jog_current_angular) > 1.0e-5
+            or np.linalg.norm(self.jog_target_linear) > 1.0e-5
+            or np.linalg.norm(self.jog_target_angular) > 1.0e-5
+        ):
+            self.publish_jog_twist(
+                self.jog_current_linear,
+                self.jog_current_angular,
+                force=True,
+            )
 
     def publish_jog_twist(self, linear, angular, force=False):
         if not self.keyboard_jog_enabled and not force:
@@ -392,12 +551,20 @@ class SemiAutoHandeyeSession(Node):
         msg.twist.angular.x = float(angular[0])
         msg.twist.angular.y = float(angular[1])
         msg.twist.angular.z = float(angular[2])
+        self.jog_twist_pub.publish(msg)
 
-        burst_sec = float(self.get_parameter("jog_burst_sec").value)
-        repetitions = 1 if force else max(1, int(math.ceil(burst_sec / 0.04)))
-        for _ in range(repetitions):
-            self.jog_twist_pub.publish(msg)
-            time.sleep(0.04)
+    def stop_jog(self, force=False):
+        self.jog_target_linear = np.zeros(3, dtype=np.float64)
+        self.jog_target_angular = np.zeros(3, dtype=np.float64)
+        self.jog_current_linear = np.zeros(3, dtype=np.float64)
+        self.jog_current_angular = np.zeros(3, dtype=np.float64)
+        for _ in range(3):
+            self.publish_jog_twist(
+                self.jog_current_linear,
+                self.jog_current_angular,
+                force=force,
+            )
+            time.sleep(0.02)
 
     def save_debug_frame(self, frame):
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -416,6 +583,7 @@ class SemiAutoHandeyeSession(Node):
                     frame["detection"],
                     frame["camera_matrix"],
                     frame["distortion_coeffs"],
+                    draw_rejected=True,
                 ),
             )
         self.get_logger().info(
@@ -839,6 +1007,16 @@ def normalize(vector):
     if norm < 1.0e-9:
         return np.array([1.0, 0.0, 0.0], dtype=np.float64)
     return vector / norm
+
+
+def slew_vector(current, target, max_delta):
+    current = np.asarray(current, dtype=np.float64)
+    target = np.asarray(target, dtype=np.float64)
+    delta = target - current
+    delta_norm = np.linalg.norm(delta)
+    if delta_norm <= max_delta or delta_norm < 1.0e-12:
+        return target.copy()
+    return current + delta * (max_delta / delta_norm)
 
 
 def rotate_about_axis(vector, axis, angle):
