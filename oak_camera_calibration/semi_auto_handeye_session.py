@@ -14,6 +14,7 @@ import rclpy
 import yaml
 from cv_bridge import CvBridge
 from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import TwistStamped
 from mur_control.action import JparseMove
 from oak_camera_calibration.charuco_detector import CharucoDetector
 from oak_camera_calibration.compute_handeye import (
@@ -48,6 +49,13 @@ class SemiAutoHandeyeSession(Node):
         self.declare_parameter("robot_tcp_frame", "")
         self.declare_parameter("action_name", "")
         self.declare_parameter("move_enabled", False)
+        self.declare_parameter("gui_enabled", True)
+        self.declare_parameter("keyboard_jog_enabled", False)
+        self.declare_parameter("jog_twist_topic", "")
+        self.declare_parameter("jog_linear_velocity", 0.015)
+        self.declare_parameter("jog_angular_velocity", 0.08)
+        self.declare_parameter("jog_burst_sec", 0.16)
+        self.declare_parameter("display_max_side", 1600)
         self.declare_parameter("planning_frame", "")
         self.declare_parameter("samples", 12)
         self.declare_parameter("sphere_radius_m", 0.0)
@@ -93,10 +101,17 @@ class SemiAutoHandeyeSession(Node):
         self.planning_frame = self._param_or_default("planning_frame", self.robot_base_frame)
         self.action_name = self._param_or_default("action_name", f"/{robot_name}/jparse_move_{arm}")
         self.move_enabled = bool(self.get_parameter("move_enabled").value)
+        self.gui_enabled = bool(self.get_parameter("gui_enabled").value)
+        self.keyboard_jog_enabled = bool(self.get_parameter("keyboard_jog_enabled").value)
+        self.jog_twist_topic = self._param_or_default(
+            "jog_twist_topic",
+            f"/{robot_name}/jparse_velocity_controller_{arm}/twist_cmd",
+        )
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.action_client = ActionClient(self, JparseMove, self.action_name)
+        self.jog_twist_pub = self.create_publisher(TwistStamped, self.jog_twist_topic, 10)
         self.detector = CharucoDetector(
             squares_x=self.get_parameter("squares_x").value,
             squares_y=self.get_parameter("squares_y").value,
@@ -130,8 +145,18 @@ class SemiAutoHandeyeSession(Node):
         self.get_logger().info(
             f"Motion {'enabled' if self.move_enabled else 'disabled'}; action={self.action_name}"
         )
+        self.get_logger().info(
+            "GUI "
+            f"{'enabled' if self.gui_enabled else 'disabled'}; "
+            f"keyboard_jog={'enabled' if self.keyboard_jog_enabled else 'disabled'}; "
+            f"twist={self.jog_twist_topic}"
+        )
 
     def run_session(self):
+        if self.gui_enabled:
+            self.run_gui_session()
+            return
+
         self.get_logger().info("Waiting for image, CameraInfo, ChArUco pose, and robot TF...")
         first = self.wait_for_complete_observation()
         if first is None:
@@ -199,6 +224,236 @@ class SemiAutoHandeyeSession(Node):
                     return
 
         self.write_session_state()
+
+    def run_gui_session(self):
+        window_name = "semi_auto_handeye_session"
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        self.get_logger().info(
+            "GUI keys: c=save sample/frame, q=quit, .=stop, "
+            "w/x=+/-X, a/d=+/-Y, r/f=+/-Z, "
+            "i/k=+/-RX, j/l=+/-RY, u/o=+/-RZ"
+        )
+
+        try:
+            while rclpy.ok():
+                frame = self.current_frame_detection()
+                view = self.render_gui_frame(frame)
+                cv2.imshow(window_name, view)
+                key = cv2.waitKey(20) & 0xFF
+                if key == 255:
+                    continue
+                if not self.handle_gui_key(key, frame):
+                    break
+        finally:
+            self.publish_jog_twist([0.0, 0.0, 0.0], [0.0, 0.0, 0.0], force=True)
+            cv2.destroyWindow(window_name)
+
+    def current_frame_detection(self):
+        with self.data_lock:
+            image_msg = self.latest_image_msg
+            camera_info = self.latest_camera_info
+
+        if image_msg is None:
+            self.last_wait_status = (
+                f"waiting for image on {self.get_parameter('image_topic').value}"
+            )
+            return None
+
+        image = self.bridge.imgmsg_to_cv2(image_msg, desired_encoding="bgr8")
+        camera_matrix = None
+        distortion_coeffs = None
+        detection = None
+        if camera_info is None:
+            self.last_wait_status = (
+                f"waiting for CameraInfo on {self.get_parameter('camera_info_topic').value}"
+            )
+        else:
+            camera_matrix, distortion_coeffs = self.camera_model(camera_info)
+            detection = self.detector.detect(image, camera_matrix, distortion_coeffs)
+            if detection is None or detection.get("pose") is None:
+                if detection is None:
+                    self.last_wait_status = "waiting for ChArUco detector result"
+                else:
+                    self.last_wait_status = (
+                        "waiting for ChArUco pose: "
+                        f"markers={detection.get('num_markers', 0)}, "
+                        f"corners={detection.get('num_charuco_corners', 0)}"
+                    )
+            else:
+                self.last_wait_status = (
+                    "ChArUco pose ok: "
+                    f"corners={detection.get('num_charuco_corners', 0)}"
+                )
+
+        return {
+            "image": image,
+            "image_msg": image_msg,
+            "camera_info": camera_info,
+            "camera_matrix": camera_matrix,
+            "distortion_coeffs": distortion_coeffs,
+            "detection": detection,
+        }
+
+    def render_gui_frame(self, frame):
+        if frame is None:
+            view = np.zeros((480, 960, 3), dtype=np.uint8)
+            self.draw_text_lines(
+                view,
+                [
+                    "Waiting for OAK image...",
+                    self.last_wait_status,
+                ],
+            )
+            return view
+
+        image = frame["image"]
+        detection = frame["detection"]
+        camera_matrix = frame["camera_matrix"]
+        distortion_coeffs = frame["distortion_coeffs"]
+        if detection is None:
+            view = image.copy()
+        else:
+            view = self.detector.draw_detection(
+                image,
+                detection,
+                camera_matrix,
+                distortion_coeffs,
+            )
+
+        view = self.resize_for_display(view)
+        status_lines = [
+            self.last_wait_status,
+            f"next sample: {self.sample_prefix}_{self.sample_idx:03d}",
+            (
+                "keyboard jog ON"
+                if self.keyboard_jog_enabled
+                else "keyboard jog OFF"
+            ),
+            "c=save q=quit .=stop w/x a/d r/f linear, i/k j/l u/o angular",
+        ]
+        self.draw_text_lines(view, status_lines)
+        return view
+
+    def handle_gui_key(self, key, frame):
+        char = chr(key).lower() if 0 <= key < 128 else ""
+        if char == "q" or key == 27:
+            return False
+        if char == "c":
+            observation = self.current_observation()
+            if observation is not None:
+                self.save_sample(observation)
+                self.recompute_handeye()
+                self.update_board_estimate(observation)
+            elif frame is not None:
+                self.save_debug_frame(frame)
+            return True
+        if char == ".":
+            self.publish_jog_twist([0.0, 0.0, 0.0], [0.0, 0.0, 0.0], force=True)
+            return True
+
+        linear, angular = self.jog_command_from_key(char)
+        if linear is None:
+            return True
+        self.publish_jog_twist(linear, angular)
+        return True
+
+    def jog_command_from_key(self, char):
+        v = float(self.get_parameter("jog_linear_velocity").value)
+        w = float(self.get_parameter("jog_angular_velocity").value)
+        mapping = {
+            "w": ([v, 0.0, 0.0], [0.0, 0.0, 0.0]),
+            "x": ([-v, 0.0, 0.0], [0.0, 0.0, 0.0]),
+            "a": ([0.0, v, 0.0], [0.0, 0.0, 0.0]),
+            "d": ([0.0, -v, 0.0], [0.0, 0.0, 0.0]),
+            "r": ([0.0, 0.0, v], [0.0, 0.0, 0.0]),
+            "f": ([0.0, 0.0, -v], [0.0, 0.0, 0.0]),
+            "i": ([0.0, 0.0, 0.0], [w, 0.0, 0.0]),
+            "k": ([0.0, 0.0, 0.0], [-w, 0.0, 0.0]),
+            "j": ([0.0, 0.0, 0.0], [0.0, w, 0.0]),
+            "l": ([0.0, 0.0, 0.0], [0.0, -w, 0.0]),
+            "u": ([0.0, 0.0, 0.0], [0.0, 0.0, w]),
+            "o": ([0.0, 0.0, 0.0], [0.0, 0.0, -w]),
+        }
+        return mapping.get(char, (None, None))
+
+    def publish_jog_twist(self, linear, angular, force=False):
+        if not self.keyboard_jog_enabled and not force:
+            self.get_logger().warn(
+                "Keyboard jog is disabled. Start with keyboard_jog_enabled:=true to move."
+            )
+            return
+
+        msg = TwistStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = self.robot_base_frame
+        msg.twist.linear.x = float(linear[0])
+        msg.twist.linear.y = float(linear[1])
+        msg.twist.linear.z = float(linear[2])
+        msg.twist.angular.x = float(angular[0])
+        msg.twist.angular.y = float(angular[1])
+        msg.twist.angular.z = float(angular[2])
+
+        burst_sec = float(self.get_parameter("jog_burst_sec").value)
+        repetitions = 1 if force else max(1, int(math.ceil(burst_sec / 0.04)))
+        for _ in range(repetitions):
+            self.jog_twist_pub.publish(msg)
+            time.sleep(0.04)
+
+    def save_debug_frame(self, frame):
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base = f"debug_{stamp}"
+        raw_path = os.path.join(self.output_dir, base + "_raw.png")
+        annotated_path = os.path.join(self.output_dir, base + "_annotated.png")
+        image = frame["image"].copy()
+        cv2.imwrite(raw_path, image)
+        if frame["detection"] is None:
+            cv2.imwrite(annotated_path, image)
+        else:
+            cv2.imwrite(
+                annotated_path,
+                self.detector.draw_detection(
+                    image,
+                    frame["detection"],
+                    frame["camera_matrix"],
+                    frame["distortion_coeffs"],
+                ),
+            )
+        self.get_logger().info(
+            f"Saved debug frame without complete calibration pose: {raw_path}"
+        )
+
+    def resize_for_display(self, image):
+        max_side = int(self.get_parameter("display_max_side").value)
+        h, w = image.shape[:2]
+        scale = min(1.0, float(max_side) / float(max(h, w)))
+        if scale >= 1.0:
+            return image
+        return cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+
+    def draw_text_lines(self, image, lines):
+        y = 28
+        for line in lines:
+            cv2.putText(
+                image,
+                line,
+                (18, y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.68,
+                (0, 0, 0),
+                4,
+                cv2.LINE_AA,
+            )
+            cv2.putText(
+                image,
+                line,
+                (18, y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.68,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
+            y += 28
 
     def _on_image(self, msg):
         with self.data_lock:
