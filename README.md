@@ -163,6 +163,7 @@ The launch defaults are for the OAK mounted on the right arm:
 - `robot_tcp_frame:=mur620/UR10_r/tool0`
 - `action_name:=/mur620/jparse_move_r`
 - `jog_twist_topic:=/mur620/jparse_velocity_controller_r/twist_cmd`
+- `jog_frame:=UR10_r/base_link`
 - `move_enabled:=false`
 - `keyboard_jog_enabled:=true`
 - `dictionary:=DICT_4X4_250`

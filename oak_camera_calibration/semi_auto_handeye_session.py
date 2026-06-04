@@ -53,6 +53,7 @@ class SemiAutoHandeyeSession(Node):
         self.declare_parameter("gui_enabled", True)
         self.declare_parameter("keyboard_jog_enabled", True)
         self.declare_parameter("jog_twist_topic", "")
+        self.declare_parameter("jog_frame", "")
         self.declare_parameter("jog_linear_velocity", 0.03)
         self.declare_parameter("jog_angular_velocity", 0.25)
         self.declare_parameter("jog_linear_acceleration", 0.12)
@@ -123,6 +124,7 @@ class SemiAutoHandeyeSession(Node):
             "jog_twist_topic",
             f"/{robot_name}/jparse_velocity_controller_{arm}/twist_cmd",
         )
+        self.jog_frame = self._param_or_default("jog_frame", f"UR10_{arm}/base_link")
         self.jog_target_linear = np.zeros(3, dtype=np.float64)
         self.jog_target_angular = np.zeros(3, dtype=np.float64)
         self.jog_current_linear = np.zeros(3, dtype=np.float64)
@@ -194,7 +196,7 @@ class SemiAutoHandeyeSession(Node):
             "GUI "
             f"{'enabled' if self.gui_enabled else 'disabled'}; "
             f"keyboard_jog={'enabled' if self.keyboard_jog_enabled else 'disabled'}; "
-            f"twist={self.jog_twist_topic}"
+            f"twist={self.jog_twist_topic}; jog_frame={self.jog_frame}"
         )
         self.get_logger().info(
             f"Camera look axis for target generation: {self.camera_look_axis_value}"
@@ -408,6 +410,7 @@ class SemiAutoHandeyeSession(Node):
             f"mode: {'rotation' if self.jog_rotation_mode else 'translation'}",
             f"last key: {self.last_key_text}",
             self.last_jog_text,
+            f"jog frame: {self.jog_frame}",
             f"start pose: {self.initial_pose_source}",
             *self.gui_target_summary_lines,
             "n=next g=go b=back c=save q=quit .=stop arrows=XY PgUp/PgDn=Z",
@@ -825,7 +828,7 @@ class SemiAutoHandeyeSession(Node):
 
         msg = TwistStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = self.robot_base_frame
+        msg.header.frame_id = self.jog_frame
         msg.twist.linear.x = float(linear[0])
         msg.twist.linear.y = float(linear[1])
         msg.twist.linear.z = float(linear[2])
@@ -1139,14 +1142,21 @@ class SemiAutoHandeyeSession(Node):
 
     def select_next_target(self, targets, current_pose, visited_positions):
         current_position = current_pose[:3, 3]
+        scored_targets = []
         for target in targets:
+            translation_delta = float(np.linalg.norm(target[:3, 3] - current_position))
+            rotation_delta = rotation_angle_deg(
+                (np.linalg.inv(current_pose) @ target)[:3, :3]
+            )
+            scored_targets.append((translation_delta + 0.002 * rotation_delta, target))
+        for _, target in sorted(scored_targets, key=lambda item: item[0]):
             target_position = target[:3, 3]
             if np.linalg.norm(target_position - current_position) < 0.015:
                 continue
             if any(np.linalg.norm(target_position - visited) < 0.025 for visited in visited_positions):
                 continue
             return target
-        return targets[0]
+        return min(scored_targets, key=lambda item: item[0])[1]
 
     def send_pose_goal(self, T_base_tcp):
         if not self.action_client.wait_for_server(timeout_sec=3.0):
@@ -1546,34 +1556,66 @@ def look_at_camera_pose(
     forward_axis = normalize(target_position - camera_position)
     z_axis = -forward_axis if look_axis == "minus_z" else forward_axis
 
-    x_axis = None
+    candidates = []
     if reference_rotation is not None:
         reference_rotation = np.asarray(reference_rotation, dtype=np.float64)
-        x_reference = reference_rotation[:3, 0]
-        x_projected = x_reference - z_axis * np.dot(x_reference, z_axis)
+        for reference_axis, axis_name in (
+            (reference_rotation[:3, 0], "x"),
+            (reference_rotation[:3, 1], "y"),
+        ):
+            projected = reference_axis - z_axis * np.dot(reference_axis, z_axis)
+            if np.linalg.norm(projected) <= 1.0e-6:
+                continue
+            if axis_name == "x":
+                x_axis = normalize(projected)
+                y_axis = normalize(np.cross(z_axis, x_axis))
+            else:
+                y_axis = normalize(projected)
+                x_axis = normalize(np.cross(y_axis, z_axis))
+                y_axis = normalize(np.cross(z_axis, x_axis))
+            candidates.append(rotation_from_axes(x_axis, y_axis, z_axis))
+
+    for fallback in (
+        np.array([0.0, 0.0, -1.0], dtype=np.float64),
+        np.array([1.0, 0.0, 0.0], dtype=np.float64),
+        np.array([0.0, 1.0, 0.0], dtype=np.float64),
+    ):
+        x_projected = fallback - z_axis * np.dot(fallback, z_axis)
         if np.linalg.norm(x_projected) > 1.0e-6:
             x_axis = normalize(x_projected)
+            y_axis = normalize(np.cross(z_axis, x_axis))
+            candidates.append(rotation_from_axes(x_axis, y_axis, z_axis))
+            break
 
-    if x_axis is None:
-        for fallback in (
-            np.array([0.0, 0.0, -1.0], dtype=np.float64),
-            np.array([1.0, 0.0, 0.0], dtype=np.float64),
-            np.array([0.0, 1.0, 0.0], dtype=np.float64),
-        ):
-            x_projected = fallback - z_axis * np.dot(fallback, z_axis)
-            if np.linalg.norm(x_projected) > 1.0e-6:
-                x_axis = normalize(x_projected)
-                break
-    if x_axis is None:
-        x_axis = np.array([1.0, 0.0, 0.0], dtype=np.float64)
-    y_axis = normalize(np.cross(z_axis, x_axis))
+    if not candidates:
+        candidates.append(
+            rotation_from_axes(
+                np.array([1.0, 0.0, 0.0], dtype=np.float64),
+                np.array([0.0, 1.0, 0.0], dtype=np.float64),
+                z_axis,
+            )
+        )
+
+    if reference_rotation is None:
+        R = candidates[0]
+    else:
+        R = min(
+            candidates,
+            key=lambda candidate: rotation_angle_deg(reference_rotation.T @ candidate),
+        )
 
     T = np.eye(4, dtype=np.float64)
-    T[:3, 0] = x_axis
-    T[:3, 1] = y_axis
-    T[:3, 2] = z_axis
+    T[:3, :3] = R
     T[:3, 3] = camera_position
     return T
+
+
+def rotation_from_axes(x_axis, y_axis, z_axis):
+    R = np.eye(3, dtype=np.float64)
+    R[:3, 0] = normalize(x_axis)
+    R[:3, 1] = normalize(y_axis)
+    R[:3, 2] = normalize(z_axis)
+    return R
 
 
 def pose_stamped_from_matrix(T, frame_id, stamp):
