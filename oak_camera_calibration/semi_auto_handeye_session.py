@@ -73,6 +73,7 @@ class SemiAutoHandeyeSession(Node):
         self.declare_parameter("target_max_camera_delta_m", 0.30)
         self.declare_parameter("target_max_rotation_deg", 25.0)
         self.declare_parameter("use_camera_tf_initial_guess", True)
+        self.declare_parameter("require_tcp_camera_estimate_for_targets", True)
         self.declare_parameter("handeye_method", "tsai")
         self.declare_parameter("handeye_min_samples", 4)
         self.declare_parameter("handeye_max_residual_translation_m", 0.05)
@@ -129,6 +130,7 @@ class SemiAutoHandeyeSession(Node):
         self.last_jog_update_time = time.monotonic()
         self.jog_rotation_mode = False
         self.last_key_text = "none"
+        self.last_jog_text = "jog: idle"
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -151,6 +153,8 @@ class SemiAutoHandeyeSession(Node):
         self.has_handeye_estimate = False
         self.has_camera_tf_initial_guess = False
         self.camera_tf_initial_guess_warned = False
+        self.initial_T_base_tcp = None
+        self.initial_pose_source = "unset"
         self.gui_target = None
         self.gui_target_current_pose = None
         self.gui_target_index = 0
@@ -217,6 +221,12 @@ class SemiAutoHandeyeSession(Node):
         visited_target_positions = []
         total_targets = max(1, int(self.get_parameter("samples").value))
         for index in range(total_targets):
+            if not self.has_tcp_camera_estimate_for_targets():
+                self.get_logger().error(
+                    "Cannot generate automatic targets: tcp<-camera is still identity. "
+                    "Use the GUI/manual jog or fix camera TF before automatic motion."
+                )
+                break
             targets = self.generate_targets(current_observation["T_base_tcp"], radius)
             target = self.select_next_target(
                 targets,
@@ -276,7 +286,8 @@ class SemiAutoHandeyeSession(Node):
         window_name = "semi_auto_handeye_session"
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         self.get_logger().info(
-            "GUI keys: n=next target, g=go to shown target, c=save sample/frame, q=quit, .=stop, "
+            "GUI keys: n=next target, g=go to shown target, b=back to start pose, "
+            "c=save sample/frame, q=quit, .=stop, "
             "arrows=XY, PgUp/PgDn=Z, Ctrl+arrows/PgUp/PgDn=rotation. "
             "If Ctrl is not detected by OpenCV, use i/k j/l u/o or press m to toggle rotation mode."
         )
@@ -385,10 +396,13 @@ class SemiAutoHandeyeSession(Node):
                 if self.keyboard_jog_enabled
                 else "keyboard jog OFF"
             ),
+            f"tcp<-camera: {self.tcp_camera_source}",
             f"mode: {'rotation' if self.jog_rotation_mode else 'translation'}",
             f"last key: {self.last_key_text}",
+            self.last_jog_text,
+            f"start pose: {self.initial_pose_source}",
             *self.gui_target_summary_lines,
-            "n=next target g=go c=save q=quit .=stop arrows=XY PgUp/PgDn=Z",
+            "n=next g=go b=back c=save q=quit .=stop arrows=XY PgUp/PgDn=Z",
         ]
         self.draw_text_lines(view, status_lines)
         return view
@@ -399,12 +413,15 @@ class SemiAutoHandeyeSession(Node):
         reproj = detection.get("reprojection_error_px") or {}
         reproj_text = "n/a" if "mean" not in reproj else f"{reproj['mean']:.2f}px"
         pose_text = "pose yes" if detection.get("pose") is not None else "pose no"
+        pose_source = ""
+        if detection.get("pose") is not None:
+            pose_source = f" source={detection['pose'].get('source', 'unknown')}"
         return (
             "detection: "
             f"markers={detection.get('num_markers', 0)} "
             f"charuco={detection.get('num_charuco_corners', 0)} "
             f"rejected={detection.get('num_rejected_candidates', 0)} "
-            f"{pose_text} reproj={reproj_text}"
+            f"{pose_text}{pose_source} reproj={reproj_text}"
         )
 
     def handle_gui_key(self, key, frame):
@@ -430,6 +447,9 @@ class SemiAutoHandeyeSession(Node):
             return True
         if char == "g":
             self.go_to_gui_target()
+            return True
+        if char == "b":
+            self.go_to_initial_pose()
             return True
         if char == "c":
             observation = self.current_observation()
@@ -460,9 +480,60 @@ class SemiAutoHandeyeSession(Node):
         if linear is None:
             return True
         self.set_jog_target(linear, angular)
-        return True
+            return True
+
+    def go_to_initial_pose(self):
+        if self.initial_T_base_tcp is None:
+            self.get_logger().warn("No initial pose captured yet.")
+            self.gui_target_summary_lines = [
+                "back: no initial pose captured yet",
+                "wait for a valid image, ChArUco pose, and robot TF",
+            ]
+            return
+        if not self.move_enabled:
+            self.get_logger().warn("move_enabled is false; initial pose was not sent.")
+            self.gui_target_summary_lines = [
+                "back: disabled; restart with move_enabled:=true",
+                "initial pose is stored but not sent",
+            ]
+            return
+
+        observation = self.current_observation()
+        if observation is not None and not self.target_is_safe(
+            observation["T_base_tcp"],
+            self.initial_T_base_tcp,
+        ):
+            return
+
+        self.stop_jog(force=True)
+        success = self.send_pose_goal(self.initial_T_base_tcp)
+        if success:
+            self.gui_target = None
+            self.gui_target_current_pose = None
+            self.gui_target_summary_lines = [
+                "back: reached initial pose",
+                "inspect live image, then jog or press n for next target",
+            ]
+        else:
+            self.gui_target_summary_lines = [
+                "back: failed or timed out",
+                "initial pose remains stored; press b to retry",
+            ]
 
     def propose_gui_target(self, observation):
+        if not self.has_tcp_camera_estimate_for_targets():
+            self.gui_target = None
+            self.gui_target_current_pose = None
+            self.gui_target_summary_lines = [
+                f"target blocked: tcp<-camera is {self.tcp_camera_source}",
+                "need camera TF or accepted hand-eye estimate; manual jog still works",
+            ]
+            self.get_logger().warn(
+                "Refusing target proposal because tcp<-camera is still identity. "
+                "Check TF from robot_tcp_frame to the camera optical frame, or disable "
+                "require_tcp_camera_estimate_for_targets for debugging only."
+            )
+            return
         if self.T_base_board is None:
             self.update_board_estimate(observation)
         if self.gui_sphere_radius is None:
@@ -510,6 +581,11 @@ class SemiAutoHandeyeSession(Node):
             f"camera_delta={metrics['camera_delta_norm']:.3f} m, "
             f"distance_to_board_center={metrics['distance_to_board_center']:.3f} m"
         )
+
+    def has_tcp_camera_estimate_for_targets(self):
+        if not bool(self.get_parameter("require_tcp_camera_estimate_for_targets").value):
+            return True
+        return self.has_handeye_estimate or self.has_camera_tf_initial_guess
 
     def go_to_gui_target(self):
         if self.gui_target is None:
@@ -616,7 +692,6 @@ class SemiAutoHandeyeSession(Node):
         return (rotation if rotate or direct_rotation else translation).get(key_name, (None, None))
 
     def key_name(self, key):
-        low = key & 0xFFFF
         arrow_codes = {
             81: "left",
             82: "up",
@@ -636,11 +711,31 @@ class SemiAutoHandeyeSession(Node):
             65364: "down",
             65365: "page_up",
             65366: "page_down",
+            0x01000012: "left",
+            0x01000013: "up",
+            0x01000014: "right",
+            0x01000015: "down",
+            0x01000016: "page_up",
+            0x01000017: "page_down",
+            0x250000: "left",
+            0x260000: "up",
+            0x270000: "right",
+            0x280000: "down",
+            0x210000: "page_up",
+            0x220000: "page_down",
         }
-        if key in arrow_codes:
-            return arrow_codes[key]
-        if low in arrow_codes:
-            return arrow_codes[low]
+        candidates = {
+            key,
+            key & 0xFFFF,
+            key & 0xFFFFFF,
+            key & 0x01FFFFFF,
+            key & ~0x04000000,
+            key & ~0x00100000,
+            key & ~0x00040000,
+        }
+        for candidate in candidates:
+            if candidate in arrow_codes:
+                return arrow_codes[candidate]
         char = self.ascii_char(key)
         if char in ("w", "a", "d", "x", "r", "f", "i", "j", "k", "l", "u", "o"):
             return char
@@ -665,10 +760,16 @@ class SemiAutoHandeyeSession(Node):
             self.get_logger().warn(
                 "Keyboard jog is disabled. Start with keyboard_jog_enabled:=true to move."
             )
+            self.last_jog_text = "jog: disabled"
             return
         self.jog_target_linear = np.asarray(linear, dtype=np.float64)
         self.jog_target_angular = np.asarray(angular, dtype=np.float64)
         self.last_jog_key_time = time.monotonic()
+        self.last_jog_text = (
+            "jog target: "
+            f"lin=[{self.jog_target_linear[0]:.3f}, {self.jog_target_linear[1]:.3f}, {self.jog_target_linear[2]:.3f}] "
+            f"ang=[{self.jog_target_angular[0]:.3f}, {self.jog_target_angular[1]:.3f}, {self.jog_target_angular[2]:.3f}]"
+        )
 
     def update_jog_output(self):
         if not self.keyboard_jog_enabled:
@@ -727,6 +828,7 @@ class SemiAutoHandeyeSession(Node):
         self.jog_target_angular = np.zeros(3, dtype=np.float64)
         self.jog_current_linear = np.zeros(3, dtype=np.float64)
         self.jog_current_angular = np.zeros(3, dtype=np.float64)
+        self.last_jog_text = "jog: stopped"
         for _ in range(3):
             self.publish_jog_twist(
                 self.jog_current_linear,
@@ -857,6 +959,7 @@ class SemiAutoHandeyeSession(Node):
             detection["pose"]["rvec"],
             detection["pose"]["tvec"],
         )
+        self.capture_initial_pose_once(T_base_tcp)
         self.latest_image = image
         return {
             "image": image,
@@ -868,6 +971,17 @@ class SemiAutoHandeyeSession(Node):
             "T_base_tcp": T_base_tcp,
             "T_camera_board": T_camera_board,
         }
+
+    def capture_initial_pose_once(self, T_base_tcp):
+        if self.initial_T_base_tcp is not None:
+            return
+        self.initial_T_base_tcp = T_base_tcp.copy()
+        self.initial_pose_source = "captured"
+        p = self.initial_T_base_tcp[:3, 3]
+        self.get_logger().info(
+            "Captured initial TCP pose for back-to-start: "
+            f"x={p[0]:.4f}, y={p[1]:.4f}, z={p[2]:.4f} in {self.robot_base_frame}"
+        )
 
     def log_wait_status(self):
         now = time.monotonic()
@@ -1167,6 +1281,12 @@ class SemiAutoHandeyeSession(Node):
             "planning_frame": self.planning_frame,
             "action_name": self.action_name,
             "move_enabled": self.move_enabled,
+            "initial_pose": None
+            if self.initial_T_base_tcp is None
+            else {
+                "source": self.initial_pose_source,
+                "matrix": self.initial_T_base_tcp.reshape(-1).astype(float).tolist(),
+            },
             "tcp_camera_estimate": {
                 "source": self.tcp_camera_source,
                 "translation_m": self.T_tcp_camera[:3, 3].astype(float).tolist(),

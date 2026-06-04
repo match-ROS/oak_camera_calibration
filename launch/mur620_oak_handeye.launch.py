@@ -73,6 +73,9 @@ def generate_launch_description():
                 "use_camera_tf_initial_guess": LaunchConfiguration(
                     "use_camera_tf_initial_guess"
                 ),
+                "require_tcp_camera_estimate_for_targets": LaunchConfiguration(
+                    "require_tcp_camera_estimate_for_targets"
+                ),
                 "handeye_method": LaunchConfiguration("handeye_method"),
                 "handeye_min_samples": LaunchConfiguration("handeye_min_samples"),
                 "handeye_max_residual_translation_m": LaunchConfiguration(
@@ -141,6 +144,7 @@ def generate_launch_description():
             DeclareLaunchArgument("target_max_camera_delta_m", default_value="0.30"),
             DeclareLaunchArgument("target_max_rotation_deg", default_value="25.0"),
             DeclareLaunchArgument("use_camera_tf_initial_guess", default_value="true"),
+            DeclareLaunchArgument("require_tcp_camera_estimate_for_targets", default_value="true"),
             DeclareLaunchArgument("handeye_method", default_value="tsai"),
             DeclareLaunchArgument("handeye_min_samples", default_value="4"),
             DeclareLaunchArgument("handeye_max_residual_translation_m", default_value="0.05"),

@@ -198,6 +198,7 @@ In the GUI, use:
 
 - `n`: propose the next sphere target and show TCP/camera deltas
 - `g`: send the shown target to J-PARSE if `move_enabled:=true`
+- `b`: move back to the first valid TCP pose captured after session start
 - `c`: save the current sample
 - arrow keys and `PgUp`/`PgDn`: manual Cartesian jog
 - `m`: toggle translation/rotation jog mode
