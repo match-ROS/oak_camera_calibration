@@ -74,6 +74,7 @@ class SemiAutoHandeyeSession(Node):
         self.declare_parameter("target_max_rotation_deg", 25.0)
         self.declare_parameter("use_camera_tf_initial_guess", True)
         self.declare_parameter("require_tcp_camera_estimate_for_targets", True)
+        self.declare_parameter("camera_look_axis", "plus_z")
         self.declare_parameter("handeye_method", "tsai")
         self.declare_parameter("handeye_min_samples", 4)
         self.declare_parameter("handeye_max_residual_translation_m", 0.05)
@@ -155,6 +156,9 @@ class SemiAutoHandeyeSession(Node):
         self.camera_tf_initial_guess_warned = False
         self.initial_T_base_tcp = None
         self.initial_pose_source = "unset"
+        self.camera_look_axis_value = self.normalize_camera_look_axis(
+            self.get_parameter("camera_look_axis").value
+        )
         self.gui_target = None
         self.gui_target_current_pose = None
         self.gui_target_index = 0
@@ -191,6 +195,9 @@ class SemiAutoHandeyeSession(Node):
             f"{'enabled' if self.gui_enabled else 'disabled'}; "
             f"keyboard_jog={'enabled' if self.keyboard_jog_enabled else 'disabled'}; "
             f"twist={self.jog_twist_topic}"
+        )
+        self.get_logger().info(
+            f"Camera look axis for target generation: {self.camera_look_axis_value}"
         )
 
     def run_session(self):
@@ -287,7 +294,7 @@ class SemiAutoHandeyeSession(Node):
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         self.get_logger().info(
             "GUI keys: n=next target, g=go to shown target, b=back to start pose, "
-            "c=save sample/frame, q=quit, .=stop, "
+            "c=save sample/frame, v=flip camera look axis, q=quit, .=stop, "
             "arrows=XY, PgUp/PgDn=Z, Ctrl+arrows/PgUp/PgDn=rotation. "
             "If Ctrl is not detected by OpenCV, use i/k j/l u/o or press m to toggle rotation mode."
         )
@@ -397,6 +404,7 @@ class SemiAutoHandeyeSession(Node):
                 else "keyboard jog OFF"
             ),
             f"tcp<-camera: {self.tcp_camera_source}",
+            f"look axis: {self.camera_look_axis_value} (v toggles, then press n)",
             f"mode: {'rotation' if self.jog_rotation_mode else 'translation'}",
             f"last key: {self.last_key_text}",
             self.last_jog_text,
@@ -475,12 +483,15 @@ class SemiAutoHandeyeSession(Node):
                 f"Jog mode: {'rotation' if self.jog_rotation_mode else 'translation'}"
             )
             return True
+        if char == "v":
+            self.toggle_camera_look_axis()
+            return True
 
         linear, angular = self.jog_command_from_key(key)
         if linear is None:
             return True
         self.set_jog_target(linear, angular)
-            return True
+        return True
 
     def go_to_initial_pose(self):
         if self.initial_T_base_tcp is None:
@@ -1118,6 +1129,7 @@ class SemiAutoHandeyeSession(Node):
                 board_center + radius * rotated,
                 board_center,
                 reference_rotation=current_camera_rotation,
+                look_axis=self.camera_look_axis_value,
             )
             T_base_tcp = T_base_camera @ np.linalg.inv(self.T_tcp_camera)
             candidates.append(T_base_tcp)
@@ -1363,6 +1375,38 @@ class SemiAutoHandeyeSession(Node):
         value = str(self.get_parameter(name).value)
         return default if value == "" else value
 
+    def normalize_camera_look_axis(self, value):
+        normalized = str(value).strip().lower().replace("-", "_")
+        if normalized in ("minus_z", "negative_z", "neg_z", "_z"):
+            return "minus_z"
+        if normalized in ("plus_z", "positive_z", "pos_z", "+z", "z"):
+            return "plus_z"
+        self.get_logger().warn(
+            f"Unknown camera_look_axis '{value}', falling back to plus_z."
+        )
+        return "plus_z"
+
+    def toggle_camera_look_axis(self):
+        self.camera_look_axis_value = (
+            "minus_z" if self.camera_look_axis_value == "plus_z" else "plus_z"
+        )
+        self.gui_target = None
+        self.gui_target_current_pose = None
+        self.gui_target_summary_lines = [
+            f"look axis: {self.camera_look_axis_value}; press n to recompute target",
+            "target move: no active target after look-axis toggle",
+        ]
+        self.get_logger().warn(
+            "Camera look axis toggled to "
+            f"{self.camera_look_axis_value}. Press n to generate a fresh target."
+        )
+
+    def camera_forward_vector(self, T_base_camera):
+        z_axis = normalize(T_base_camera[:3, 2])
+        if self.camera_look_axis_value == "minus_z":
+            return -z_axis
+        return z_axis
+
     def target_motion_metrics(self, T_base_tcp_current, T_base_tcp_target):
         T_current_camera = T_base_tcp_current @ self.T_tcp_camera
         T_target_camera = T_base_tcp_target @ self.T_tcp_camera
@@ -1376,9 +1420,11 @@ class SemiAutoHandeyeSession(Node):
         camera_p = T_target_camera[:3, 3]
         board_center = self.board_center_in_base()
         distance = np.linalg.norm(camera_p - board_center)
-        target_camera_z = normalize(T_target_camera[:3, 2])
+        target_camera_forward = self.camera_forward_vector(T_target_camera)
         target_to_board = normalize(board_center - camera_p)
-        look_cos = float(np.clip(np.dot(target_camera_z, target_to_board), -1.0, 1.0))
+        look_cos = float(
+            np.clip(np.dot(target_camera_forward, target_to_board), -1.0, 1.0)
+        )
         return {
             "tcp_delta_base": tcp_delta_base,
             "tcp_delta_local": tcp_delta_local,
@@ -1392,6 +1438,7 @@ class SemiAutoHandeyeSession(Node):
             "board_center": board_center,
             "distance_to_board_center": float(distance),
             "look_angle_deg": math.degrees(math.acos(look_cos)),
+            "camera_look_axis": self.camera_look_axis_value,
         }
 
     def print_target(self, index, total, T_base_tcp_current, T_base_tcp_target):
@@ -1430,6 +1477,7 @@ class SemiAutoHandeyeSession(Node):
             "  camera:      "
             f"x={camera_p[0]: .4f} y={camera_p[1]: .4f} z={camera_p[2]: .4f} "
             f"distance_to_board_center={metrics['distance_to_board_center']:.4f} m "
+            f"look_axis={metrics['camera_look_axis']} "
             f"look_angle={metrics['look_angle_deg']:.2f} deg"
         )
         print(
@@ -1487,10 +1535,16 @@ def rotation_angle_deg(R):
     return math.degrees(math.acos(cos_angle))
 
 
-def look_at_camera_pose(camera_position, target_position, reference_rotation=None):
+def look_at_camera_pose(
+    camera_position,
+    target_position,
+    reference_rotation=None,
+    look_axis="plus_z",
+):
     camera_position = np.asarray(camera_position, dtype=np.float64)
     target_position = np.asarray(target_position, dtype=np.float64)
-    z_axis = normalize(target_position - camera_position)
+    forward_axis = normalize(target_position - camera_position)
+    z_axis = -forward_axis if look_axis == "minus_z" else forward_axis
 
     x_axis = None
     if reference_rotation is not None:

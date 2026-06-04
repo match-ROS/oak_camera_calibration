@@ -170,6 +170,7 @@ The launch defaults are for the OAK mounted on the right arm:
 - `square_length_m:=0.065`
 - `marker_length_m:=0.048`
 - `use_camera_tf_initial_guess:=true`
+- `camera_look_axis:=plus_z`
 - `max_linear_velocity:=0.025`
 - `max_angular_velocity:=0.10`
 - `target_max_tcp_delta_m:=0.25`
@@ -194,12 +195,17 @@ When the generated poses look plausible, enable automatic J-PARSE motion:
 ros2 launch oak_camera_calibration mur620_oak_handeye.launch.py move_enabled:=true
 ```
 
+If a proposed target moves to a plausible position but rotates the camera away
+from the board, press `v` in the GUI and then `n` to regenerate the target. If
+that fixes the sign, restart with `camera_look_axis:=minus_z`.
+
 In the GUI, use:
 
 - `n`: propose the next sphere target and show TCP/camera deltas
 - `g`: send the shown target to J-PARSE if `move_enabled:=true`
 - `b`: move back to the first valid TCP pose captured after session start
 - `c`: save the current sample
+- `v`: flip the camera look axis for target generation, then press `n` again
 - arrow keys and `PgUp`/`PgDn`: manual Cartesian jog
 - `m`: toggle translation/rotation jog mode
 - `q` or `Esc`: close the GUI
