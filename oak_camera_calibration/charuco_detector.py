@@ -27,6 +27,7 @@ class CharucoDetector:
         refine_max_side=2200,
         roi_margin_ratio=0.20,
         roi_margin_px=80,
+        board_id_order="row_major",
     ):
         self.squares_x = int(squares_x)
         self.squares_y = int(squares_y)
@@ -38,6 +39,9 @@ class CharucoDetector:
         self.refine_max_side = int(refine_max_side)
         self.roi_margin_ratio = float(roi_margin_ratio)
         self.roi_margin_px = int(roi_margin_px)
+        self.board_id_order = str(board_id_order).lower()
+        if self.board_id_order not in ("row_major", "column_major"):
+            raise ValueError(f"Unsupported board_id_order: {board_id_order}")
 
         if self.dictionary_name not in ARUCO_DICTIONARIES:
             raise ValueError(f"Unsupported ArUco dictionary: {dictionary_name}")
@@ -57,6 +61,7 @@ class CharucoDetector:
             "marker_length_m": self.marker_length_m,
             "dictionary": self.dictionary_name,
             "min_charuco_corners": self.min_charuco_corners,
+            "board_id_order": self.board_id_order,
         }
 
     def board_center_offset(self):
@@ -124,7 +129,23 @@ class CharucoDetector:
                 camera_matrix,
                 d,
             )
-            if charuco_ids is not None and int(count) >= self.min_charuco_corners:
+            if self.board_id_order != "row_major":
+                pose = self._estimate_marker_layout_pose(
+                    marker_corners,
+                    marker_ids,
+                    camera_matrix,
+                    d,
+                )
+                if pose is not None:
+                    reprojection_error = self._marker_reprojection_error(
+                        marker_corners,
+                        marker_ids,
+                        pose["rvec"],
+                        pose["tvec"],
+                        camera_matrix,
+                        d,
+                    )
+            elif charuco_ids is not None and int(count) >= self.min_charuco_corners:
                 pose = self._estimate_pose(
                     charuco_corners,
                     charuco_ids,
@@ -304,6 +325,36 @@ class CharucoDetector:
             return None
         return {
             "markers_used": int(len(charuco_ids)),
+            "source": "charuco_corners",
+            "rvec": rvec,
+            "tvec": tvec,
+        }
+
+    def _estimate_marker_layout_pose(
+        self,
+        marker_corners,
+        marker_ids,
+        camera_matrix,
+        distortion_coeffs,
+    ):
+        object_points, image_points = self._marker_object_image_points(
+            marker_corners,
+            marker_ids,
+        )
+        if len(object_points) < 4:
+            return None
+        ok, rvec, tvec = cv2.solvePnP(
+            object_points,
+            image_points,
+            camera_matrix,
+            distortion_coeffs,
+            flags=cv2.SOLVEPNP_ITERATIVE,
+        )
+        if not ok:
+            return None
+        return {
+            "markers_used": int(len(object_points) // 4),
+            "source": f"marker_corners_{self.board_id_order}",
             "rvec": rvec,
             "tvec": tvec,
         }
@@ -337,6 +388,104 @@ class CharucoDetector:
             "median": float(np.median(errors)),
             "max": float(np.max(errors)),
         }
+
+    def _marker_reprojection_error(
+        self,
+        marker_corners,
+        marker_ids,
+        rvec,
+        tvec,
+        camera_matrix,
+        distortion_coeffs,
+    ):
+        object_points, image_points = self._marker_object_image_points(
+            marker_corners,
+            marker_ids,
+        )
+        projected, _ = cv2.projectPoints(
+            object_points,
+            rvec,
+            tvec,
+            camera_matrix,
+            distortion_coeffs,
+        )
+        projected = projected.reshape(-1, 2)
+        errors = np.linalg.norm(projected - image_points, axis=1)
+        return {
+            "mean": float(np.mean(errors)),
+            "median": float(np.median(errors)),
+            "max": float(np.max(errors)),
+        }
+
+    def _marker_object_image_points(self, marker_corners, marker_ids):
+        object_points = []
+        image_points = []
+        if marker_ids is None:
+            return (
+                np.zeros((0, 3), dtype=np.float32),
+                np.zeros((0, 2), dtype=np.float32),
+            )
+        for marker_id, corners in zip(marker_ids.flatten().astype(int), marker_corners):
+            object_corners = self._marker_object_corners(marker_id)
+            if object_corners is None:
+                continue
+            object_points.extend(object_corners)
+            image_points.extend(corners.reshape(4, 2).astype(np.float32))
+        return (
+            np.asarray(object_points, dtype=np.float32),
+            np.asarray(image_points, dtype=np.float32),
+        )
+
+    def _marker_object_corners(self, marker_id):
+        if self.board_id_order == "row_major":
+            return self._standard_marker_object_corners(marker_id)
+        return self._column_major_marker_object_corners(marker_id)
+
+    def _standard_marker_object_corners(self, marker_id):
+        if hasattr(self.board, "getIds"):
+            board_ids = self.board.getIds().flatten().astype(int)
+            board_points = self.board.getObjPoints()
+        else:
+            board_ids = self.board.ids.flatten().astype(int)
+            board_points = self.board.objPoints
+        for board_id, object_corners in zip(board_ids, board_points):
+            if int(board_id) == int(marker_id):
+                return np.asarray(object_corners, dtype=np.float32).reshape(4, 3)
+        return None
+
+    def _column_major_marker_object_corners(self, marker_id):
+        marker_index = 0
+        for col in range(self.squares_x):
+            for row in range(self.squares_y):
+                if (row + col) % 2 != 0:
+                    continue
+                if marker_index == int(marker_id):
+                    return self._marker_corners_for_square(
+                        col,
+                        row,
+                        corner_order="inverted",
+                    )
+                marker_index += 1
+        return None
+
+    def _marker_corners_for_square(self, col, row, corner_order="standard"):
+        margin = 0.5 * (self.square_length_m - self.marker_length_m)
+        x0 = col * self.square_length_m + margin
+        y0 = row * self.square_length_m + margin
+        x1 = x0 + self.marker_length_m
+        y1 = y0 + self.marker_length_m
+        corners = np.asarray(
+            [
+                [x0, y0, 0.0],
+                [x1, y0, 0.0],
+                [x1, y1, 0.0],
+                [x0, y1, 0.0],
+            ],
+            dtype=np.float32,
+        )
+        if corner_order == "inverted":
+            return corners[[0, 3, 2, 1]]
+        return corners
 
     def _get_chessboard_corners(self):
         if hasattr(self.board, "getChessboardCorners"):

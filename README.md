@@ -166,14 +166,20 @@ The launch defaults are for the OAK mounted on the right arm:
 - `move_enabled:=false`
 - `keyboard_jog_enabled:=true`
 - `dictionary:=DICT_4X4_250`
+- `board_id_order:=column_major`
 - `square_length_m:=0.065`
 - `marker_length_m:=0.048`
+- `use_camera_tf_initial_guess:=true`
+- `max_linear_velocity:=0.025`
+- `max_angular_velocity:=0.10`
+- `target_max_tcp_delta_m:=0.25`
+- `target_max_rotation_deg:=25.0`
 
 The session estimates the board pose from the first usable view, generates
 nearby viewpoints on a sphere around the board center, and writes the same
 `sample_*.json` files used by `compute_handeye`. By default it writes to
-`~/oak_charuco_handeye_samples` so older ArUco-Grid samples are not mixed into
-the solve.
+`~/oak_charuco_column_major_handeye_samples` so older samples captured with the
+wrong OpenCV row-major board model are not mixed into the solve.
 
 If the camera driver is already running, keep it running and start only the
 session:
@@ -188,6 +194,15 @@ When the generated poses look plausible, enable automatic J-PARSE motion:
 ros2 launch oak_camera_calibration mur620_oak_handeye.launch.py move_enabled:=true
 ```
 
+In the GUI, use:
+
+- `n`: propose the next sphere target and show TCP/camera deltas
+- `g`: send the shown target to J-PARSE if `move_enabled:=true`
+- `c`: save the current sample
+- arrow keys and `PgUp`/`PgDn`: manual Cartesian jog
+- `m`: toggle translation/rotation jog mode
+- `q` or `Esc`: close the GUI
+
 The terminal prompts before every automatic move and before every saved sample.
 After at least three usable samples it updates the current `tcp <- camera`
 estimate and stores the latest session state in `semi_auto_session_state.yaml`.
@@ -196,5 +211,5 @@ The saved ChArUco samples can be solved explicitly with:
 
 ```bash
 ros2 run oak_camera_calibration compute_handeye \
-  --samples-dir ~/oak_charuco_handeye_samples
+  --samples-dir ~/oak_charuco_column_major_handeye_samples
 ```
