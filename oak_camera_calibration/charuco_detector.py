@@ -59,6 +59,10 @@ class CharucoDetector:
             "min_charuco_corners": self.min_charuco_corners,
         }
 
+    def board_center_offset(self):
+        corners = self._get_chessboard_corners()
+        return np.mean(corners.reshape(-1, 3), axis=0).astype(np.float64)
+
     def detect(self, image_bgr, camera_matrix=None, distortion_coeffs=None):
         gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
         image_h, image_w = gray.shape[:2]

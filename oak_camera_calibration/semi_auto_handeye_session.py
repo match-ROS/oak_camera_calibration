@@ -44,13 +44,13 @@ class SemiAutoHandeyeSession(Node):
         self.declare_parameter("output_dir", "~/oak_charuco_handeye_samples")
         self.declare_parameter("sample_prefix", "sample")
         self.declare_parameter("robot_name", "mur620")
-        self.declare_parameter("arm", "l")
+        self.declare_parameter("arm", "r")
         self.declare_parameter("robot_base_frame", "")
         self.declare_parameter("robot_tcp_frame", "")
         self.declare_parameter("action_name", "")
         self.declare_parameter("move_enabled", False)
         self.declare_parameter("gui_enabled", True)
-        self.declare_parameter("keyboard_jog_enabled", False)
+        self.declare_parameter("keyboard_jog_enabled", True)
         self.declare_parameter("jog_twist_topic", "")
         self.declare_parameter("jog_linear_velocity", 0.03)
         self.declare_parameter("jog_angular_velocity", 0.25)
@@ -176,9 +176,12 @@ class SemiAutoHandeyeSession(Node):
 
         self.update_board_estimate(first)
         radius = self._sphere_radius(first["T_base_tcp"])
+        board_origin = self.T_base_board[:3, 3]
+        board_center = self.board_center_in_base()
         self.get_logger().info(
             f"Initial board estimate in {self.robot_base_frame}: "
-            f"{self.T_base_board[:3, 3].round(4).tolist()}, radius={radius:.3f} m"
+            f"origin={board_origin.round(4).tolist()}, "
+            f"center={board_center.round(4).tolist()}, radius={radius:.3f} m"
         )
 
         if self.prompt("Save current manually positioned start sample? [s/N/q] ", "snq") == "s":
@@ -745,8 +748,15 @@ class SemiAutoHandeyeSession(Node):
             observation["T_base_tcp"] @ self.T_tcp_camera @ observation["T_camera_board"]
         )
 
+    def board_center_in_base(self):
+        if self.T_base_board is None:
+            return np.zeros(3, dtype=np.float64)
+        board_center = np.ones(4, dtype=np.float64)
+        board_center[:3] = self.detector.board_center_offset()
+        return (self.T_base_board @ board_center)[:3]
+
     def generate_targets(self, T_base_tcp_current, radius):
-        board_center = self.T_base_board[:3, 3]
+        board_center = self.board_center_in_base()
         current_camera = (T_base_tcp_current @ self.T_tcp_camera)[:3, 3]
         direction = current_camera - board_center
         direction = normalize(direction)
@@ -918,6 +928,9 @@ class SemiAutoHandeyeSession(Node):
             "base_board_estimate": None
             if self.T_base_board is None
             else self.T_base_board.reshape(-1).astype(float).tolist(),
+            "base_board_center_estimate": None
+            if self.T_base_board is None
+            else self.board_center_in_base().astype(float).tolist(),
         }
         with open(path, "w", encoding="utf-8") as stream:
             yaml.safe_dump(data, stream, sort_keys=False)
@@ -962,7 +975,7 @@ class SemiAutoHandeyeSession(Node):
         configured = float(self.get_parameter("sphere_radius_m").value)
         if configured > 0.0:
             return configured
-        board_center = self.T_base_board[:3, 3]
+        board_center = self.board_center_in_base()
         camera_center = (T_base_tcp @ self.T_tcp_camera)[:3, 3]
         return float(np.linalg.norm(camera_center - board_center))
 
@@ -985,8 +998,20 @@ class SemiAutoHandeyeSession(Node):
     def print_target(self, index, total, T_base_tcp):
         q = quaternion_from_matrix(T_base_tcp[:3, :3])
         p = T_base_tcp[:3, 3]
+        camera_p = (T_base_tcp @ self.T_tcp_camera)[:3, 3]
+        board_center = self.board_center_in_base()
+        distance = np.linalg.norm(camera_p - board_center)
         print(f"Target {index}/{total} in {self.planning_frame}")
         print(f"  position:    x={p[0]: .4f} y={p[1]: .4f} z={p[2]: .4f}")
+        print(
+            "  camera:      "
+            f"x={camera_p[0]: .4f} y={camera_p[1]: .4f} z={camera_p[2]: .4f} "
+            f"distance_to_board_center={distance:.4f} m"
+        )
+        print(
+            "  board center:"
+            f" x={board_center[0]: .4f} y={board_center[1]: .4f} z={board_center[2]: .4f}"
+        )
         print(f"  quaternion:  x={q[0]: .5f} y={q[1]: .5f} z={q[2]: .5f} w={q[3]: .5f}")
 
     def prompt(self, text, allowed):

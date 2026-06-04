@@ -8,7 +8,7 @@ end effector.
 Build the package from the workspace root:
 
 ```bash
-cd /home/rosmatch/colcon_ws_recker
+cd /home/rosmatch/colcon_ws
 source /opt/ros/jazzy/setup.bash
 colcon build --packages-select oak_camera_calibration --symlink-install
 source install/setup.bash
@@ -22,21 +22,21 @@ unset ROS_DISTRO ROS_VERSION ROS_PYTHON_VERSION ROS_ROOT ROS_PACKAGE_PATH
 unset AMENT_PREFIX_PATH COLCON_PREFIX_PATH CMAKE_PREFIX_PATH
 unset LD_LIBRARY_PATH PYTHONPATH
 source /opt/ros/jazzy/setup.bash
-source /home/rosmatch/colcon_ws_recker/install/setup.bash
+source /home/rosmatch/colcon_ws/install/setup.bash
 ```
 
-Start the OAK via the installed DepthAI ROS 2 V3 driver:
-
-```bash
-ros2 launch oak_camera_calibration oak4_pro_af_rgb.launch.py
-```
-
-This uses `config/oak4_pro_af_rgb.yaml` and requests an 8000x6000 RGB stream
-at low FPS. If USB bandwidth or processing load is too high, start with the 4K
-profile:
+Start the OAK via the installed DepthAI ROS 2 V3 driver. The default parent
+frame is the right UR TCP, `mur620/UR10_r/tool0`:
 
 ```bash
 ros2 launch oak_camera_calibration oak4_pro_af_4k.launch.py
+```
+
+This uses `config/oak4_pro_af_4k.yaml` and requests a 3840x2160 RGB stream.
+The higher-resolution profile is also available:
+
+```bash
+ros2 launch oak_camera_calibration oak4_pro_af_rgb.launch.py
 ```
 
 Save one image together with the factory calibration published as `CameraInfo`:
@@ -149,40 +149,48 @@ that a sample should be inspected and deleted manually before recomputing.
 
 ## Semi-automatic ChArUco capture
 
-For a guided hardware session, start the camera and robot first, then move the
-camera roughly centered in front of the ChArUco board. The session estimates the
-board pose from this first view, generates nearby viewpoints on a sphere around
-the board, and writes the same `sample_*.json` files used by
-`compute_handeye`. By default it writes to `~/oak_charuco_handeye_samples` so
-older ArUco-Grid samples are not mixed into the solve.
-
-Dry-run the target poses first:
+For a guided hardware session, start the robot first, then launch the OAK driver
+and the semi-auto GUI together:
 
 ```bash
-ros2 run oak_camera_calibration semi_auto_handeye_session --ros-args \
-  -p robot_name:=mur620 \
-  -p arm:=l \
-  -p robot_base_frame:=mur620/UR10_l/base_link \
-  -p robot_tcp_frame:=mur620/UR10_l/tool0 \
-  -p action_name:=/mur620/jparse_move_l \
-  -p move_enabled:=false
+ros2 launch oak_camera_calibration mur620_oak_handeye.launch.py
 ```
 
-When the generated poses look plausible, enable J-PARSE motion:
+The launch defaults are for the OAK mounted on the right arm:
+
+- `arm:=r`
+- `robot_base_frame:=mur620/UR10_r/base_link`
+- `robot_tcp_frame:=mur620/UR10_r/tool0`
+- `action_name:=/mur620/jparse_move_r`
+- `jog_twist_topic:=/mur620/jparse_velocity_controller_r/twist_cmd`
+- `move_enabled:=false`
+- `keyboard_jog_enabled:=true`
+- `dictionary:=DICT_4X4_250`
+- `square_length_m:=0.065`
+- `marker_length_m:=0.048`
+
+The session estimates the board pose from the first usable view, generates
+nearby viewpoints on a sphere around the board center, and writes the same
+`sample_*.json` files used by `compute_handeye`. By default it writes to
+`~/oak_charuco_handeye_samples` so older ArUco-Grid samples are not mixed into
+the solve.
+
+If the camera driver is already running, keep it running and start only the
+session:
 
 ```bash
-ros2 run oak_camera_calibration semi_auto_handeye_session --ros-args \
-  -p robot_name:=mur620 \
-  -p arm:=l \
-  -p robot_base_frame:=mur620/UR10_l/base_link \
-  -p robot_tcp_frame:=mur620/UR10_l/tool0 \
-  -p action_name:=/mur620/jparse_move_l \
-  -p move_enabled:=true
+ros2 launch oak_camera_calibration mur620_oak_handeye.launch.py launch_camera:=false
 ```
 
-The terminal prompts before every move and before every saved sample. After at
-least three usable samples it updates the current `tcp <- camera` estimate and
-stores the latest session state in `semi_auto_session_state.yaml`.
+When the generated poses look plausible, enable automatic J-PARSE motion:
+
+```bash
+ros2 launch oak_camera_calibration mur620_oak_handeye.launch.py move_enabled:=true
+```
+
+The terminal prompts before every automatic move and before every saved sample.
+After at least three usable samples it updates the current `tcp <- camera`
+estimate and stores the latest session state in `semi_auto_session_state.yaml`.
 
 The saved ChArUco samples can be solved explicitly with:
 
