@@ -68,6 +68,7 @@ class SemiAutoHandeyeSession(Node):
         self.declare_parameter("sphere_yaw_span_deg", 30.0)
         self.declare_parameter("sphere_pitch_span_deg", 20.0)
         self.declare_parameter("target_pattern", "spiral_hemisphere")
+        self.declare_parameter("hemisphere_axis_source", "board_normal")
         self.declare_parameter("sphere_polar_span_deg", 50.0)
         self.declare_parameter("sphere_spiral_turns", 1.25)
         self.declare_parameter("max_linear_velocity", 0.025)
@@ -75,6 +76,7 @@ class SemiAutoHandeyeSession(Node):
         self.declare_parameter("move_timeout", 30.0)
         self.declare_parameter("target_max_tcp_delta_m", 0.25)
         self.declare_parameter("target_max_camera_delta_m", 0.30)
+        self.declare_parameter("target_min_camera_delta_m", 0.04)
         self.declare_parameter("target_max_rotation_deg", 25.0)
         self.declare_parameter("use_camera_tf_initial_guess", True)
         self.declare_parameter("require_tcp_camera_estimate_for_targets", True)
@@ -1092,6 +1094,7 @@ class SemiAutoHandeyeSession(Node):
         self.T_base_board = (
             observation["T_base_tcp"] @ self.T_tcp_camera @ observation["T_camera_board"]
         )
+        self.reset_spiral_frame()
 
     def board_center_in_base(self):
         if self.T_base_board is None:
@@ -1162,7 +1165,7 @@ class SemiAutoHandeyeSession(Node):
         polar_span = math.radians(float(self.get_parameter("sphere_polar_span_deg").value))
         polar_span = float(np.clip(polar_span, math.radians(1.0), math.radians(85.0)))
         turns = max(0.25, float(self.get_parameter("sphere_spiral_turns").value))
-        candidate_count = max(sample_count + 1, 2)
+        candidate_count = max(sample_count * 4, 72)
 
         candidates = []
         for index in range(candidate_count):
@@ -1191,8 +1194,8 @@ class SemiAutoHandeyeSession(Node):
         return candidates
 
     def initialize_spiral_frame(self, current_camera, board_center, current_camera_rotation):
-        zenith = normalize(current_camera - board_center)
-        x_axis = current_camera_rotation[:3, 0]
+        zenith = self.spiral_zenith_direction(current_camera, board_center)
+        x_axis = self.spiral_tangent_reference_axis(current_camera_rotation, zenith)
         tangent_x = x_axis - zenith * np.dot(x_axis, zenith)
         if np.linalg.norm(tangent_x) <= 1.0e-6:
             for fallback in (
@@ -1215,6 +1218,29 @@ class SemiAutoHandeyeSession(Node):
             f"tangent_y={np.round(tangent_y, 4).tolist()}"
         )
 
+    def reset_spiral_frame(self):
+        self.sphere_zenith_direction = None
+        self.sphere_tangent_x = None
+        self.sphere_tangent_y = None
+
+    def spiral_zenith_direction(self, current_camera, board_center):
+        source = str(self.get_parameter("hemisphere_axis_source").value).lower()
+        if source in ("board_normal", "normal", "board_z") and self.T_base_board is not None:
+            normal = normalize(self.T_base_board[:3, 2])
+            if np.dot(normal, current_camera - board_center) < 0.0:
+                normal = -normal
+            return normal
+        return normalize(current_camera - board_center)
+
+    def spiral_tangent_reference_axis(self, current_camera_rotation, zenith):
+        source = str(self.get_parameter("hemisphere_axis_source").value).lower()
+        if source in ("board_normal", "normal", "board_z") and self.T_base_board is not None:
+            board_x = self.T_base_board[:3, 0]
+            projected = board_x - zenith * np.dot(board_x, zenith)
+            if np.linalg.norm(projected) > 1.0e-6:
+                return projected
+        return current_camera_rotation[:3, 0]
+
     def select_next_target(self, targets, current_pose, visited_positions):
         if str(self.get_parameter("target_pattern").value).lower() in (
             "spiral",
@@ -1222,8 +1248,21 @@ class SemiAutoHandeyeSession(Node):
             "hemisphere_spiral",
         ):
             current_position = current_pose[:3, 3]
+            min_camera_delta = float(self.get_parameter("target_min_camera_delta_m").value)
+            max_tcp_delta = float(self.get_parameter("target_max_tcp_delta_m").value)
+            max_camera_delta = float(self.get_parameter("target_max_camera_delta_m").value)
+            max_rotation = float(self.get_parameter("target_max_rotation_deg").value)
             for target in targets:
                 target_position = target[:3, 3]
+                metrics = self.target_motion_metrics(current_pose, target)
+                if metrics["camera_delta_norm"] < min_camera_delta:
+                    continue
+                if metrics["tcp_delta_norm"] > max_tcp_delta:
+                    continue
+                if metrics["camera_delta_norm"] > max_camera_delta:
+                    continue
+                if metrics["tcp_rotation_deg"] > max_rotation:
+                    continue
                 if np.linalg.norm(target_position - current_position) < 0.015:
                     continue
                 if any(np.linalg.norm(target_position - visited) < 0.025 for visited in visited_positions):
@@ -1377,9 +1416,7 @@ class SemiAutoHandeyeSession(Node):
         self.T_base_board = average_transforms(
             [record.T_base_tcp @ candidate @ record.T_camera_target for record in records]
         )
-        self.sphere_zenith_direction = None
-        self.sphere_tangent_x = None
-        self.sphere_tangent_y = None
+        self.reset_spiral_frame()
         self.get_logger().info(
             "Updated tcp<-camera: "
             f"t={np.round(self.T_tcp_camera[:3, 3], 5).tolist()}, "

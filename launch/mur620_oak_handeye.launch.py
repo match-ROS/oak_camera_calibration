@@ -66,6 +66,7 @@ def generate_launch_description():
                 "sphere_yaw_span_deg": LaunchConfiguration("sphere_yaw_span_deg"),
                 "sphere_pitch_span_deg": LaunchConfiguration("sphere_pitch_span_deg"),
                 "target_pattern": LaunchConfiguration("target_pattern"),
+                "hemisphere_axis_source": LaunchConfiguration("hemisphere_axis_source"),
                 "sphere_polar_span_deg": LaunchConfiguration("sphere_polar_span_deg"),
                 "sphere_spiral_turns": LaunchConfiguration("sphere_spiral_turns"),
                 "max_linear_velocity": LaunchConfiguration("max_linear_velocity"),
@@ -73,6 +74,7 @@ def generate_launch_description():
                 "move_timeout": LaunchConfiguration("move_timeout"),
                 "target_max_tcp_delta_m": LaunchConfiguration("target_max_tcp_delta_m"),
                 "target_max_camera_delta_m": LaunchConfiguration("target_max_camera_delta_m"),
+                "target_min_camera_delta_m": LaunchConfiguration("target_min_camera_delta_m"),
                 "target_max_rotation_deg": LaunchConfiguration("target_max_rotation_deg"),
                 "use_camera_tf_initial_guess": LaunchConfiguration(
                     "use_camera_tf_initial_guess"
@@ -170,6 +172,7 @@ def generate_launch_description():
             DeclareLaunchArgument("sphere_yaw_span_deg", default_value="30.0"),
             DeclareLaunchArgument("sphere_pitch_span_deg", default_value="20.0"),
             DeclareLaunchArgument("target_pattern", default_value="spiral_hemisphere"),
+            DeclareLaunchArgument("hemisphere_axis_source", default_value="board_normal"),
             DeclareLaunchArgument("sphere_polar_span_deg", default_value="50.0"),
             DeclareLaunchArgument("sphere_spiral_turns", default_value="1.25"),
             DeclareLaunchArgument("max_linear_velocity", default_value="0.025"),
@@ -177,6 +180,7 @@ def generate_launch_description():
             DeclareLaunchArgument("move_timeout", default_value="30.0"),
             DeclareLaunchArgument("target_max_tcp_delta_m", default_value="0.25"),
             DeclareLaunchArgument("target_max_camera_delta_m", default_value="0.30"),
+            DeclareLaunchArgument("target_min_camera_delta_m", default_value="0.04"),
             DeclareLaunchArgument("target_max_rotation_deg", default_value="25.0"),
             DeclareLaunchArgument("use_camera_tf_initial_guess", default_value="true"),
             DeclareLaunchArgument("require_tcp_camera_estimate_for_targets", default_value="true"),

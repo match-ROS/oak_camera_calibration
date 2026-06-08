@@ -177,8 +177,10 @@ The launch defaults are for the OAK mounted on the right arm:
 - `max_angular_velocity:=0.10`
 - `target_max_tcp_delta_m:=0.25`
 - `target_max_camera_delta_m:=0.30`
-- `target_max_rotation_deg:=25.0`
+- `target_min_camera_delta_m:=0.04`
+- `target_max_rotation_deg:=35.0`
 - `target_pattern:=spiral_hemisphere`
+- `hemisphere_axis_source:=board_normal`
 - `samples:=18`
 - `sphere_polar_span_deg:=50.0`
 - `sphere_spiral_turns:=1.25`
@@ -219,8 +221,10 @@ In the GUI, use:
 
 In the separate jog GUI, hold the on-screen buttons to jog the robot. Keyboard
 fallbacks are arrow keys for XY, `PgUp`/`PgDn` for Z, `m` to toggle rotation
-mode, `i/k`, `j/l`, `u/o` for direct rotation, space or `.` to stop, and `q`
-to close only the jog window.
+mode, `i/k`, `j/l`, `u/o` for direct rotation, the house button or `h` to move
+to the stored home pose, space or `.` to stop, and `q` to close only the jog
+window. The default home pose is stored in
+`config/mur620_ur10_r_home.yaml`.
 
 The terminal prompts before every automatic move and before every saved sample.
 After at least four usable samples it updates the current `tcp <- camera`
