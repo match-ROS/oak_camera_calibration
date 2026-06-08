@@ -79,6 +79,7 @@ class SemiAutoHandeyeSession(Node):
         self.declare_parameter("target_min_camera_delta_m", 0.04)
         self.declare_parameter("target_max_rotation_deg", 35.0)
         self.declare_parameter("use_camera_tf_initial_guess", True)
+        self.declare_parameter("load_session_state", True)
         self.declare_parameter("require_tcp_camera_estimate_for_targets", True)
         self.declare_parameter("camera_look_axis", "plus_z")
         self.declare_parameter("handeye_method", "tsai")
@@ -179,6 +180,7 @@ class SemiAutoHandeyeSession(Node):
             "target: press n to propose next sphere pose",
             "target move: press g after checking deltas",
         ]
+        self.load_session_state()
 
         qos = QoSProfile(depth=1)
         qos.reliability = ReliabilityPolicy.BEST_EFFORT
@@ -1090,6 +1092,47 @@ class SemiAutoHandeyeSession(Node):
             f"t={np.round(self.T_tcp_camera[:3, 3], 5).tolist()}"
         )
 
+    def load_session_state(self):
+        if not bool(self.get_parameter("load_session_state").value):
+            return
+        path = os.path.join(self.output_dir, "semi_auto_session_state.yaml")
+        if not os.path.exists(path):
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as stream:
+                data = yaml.safe_load(stream) or {}
+            tcp_camera = data.get("tcp_camera_estimate") or {}
+            T_tcp_camera = matrix_from_flat_list(tcp_camera.get("matrix"))
+            if T_tcp_camera is not None:
+                self.T_tcp_camera = T_tcp_camera
+                self.has_handeye_estimate = True
+                self.has_camera_tf_initial_guess = False
+                self.tcp_camera_source = f"loaded:{tcp_camera.get('source', 'session_state')}"
+
+            T_base_board = matrix_from_flat_list(data.get("base_board_estimate"))
+            if T_base_board is not None:
+                self.T_base_board = T_base_board
+
+            initial_pose = data.get("initial_pose") or {}
+            T_initial = matrix_from_flat_list(initial_pose.get("matrix"))
+            if T_initial is not None:
+                self.initial_T_base_tcp = T_initial
+                self.initial_pose_source = f"loaded:{initial_pose.get('source', 'session_state')}"
+
+            self.reset_spiral_frame()
+            if T_tcp_camera is not None or T_base_board is not None:
+                center_text = (
+                    "n/a"
+                    if self.T_base_board is None
+                    else np.round(self.board_center_in_base(), 4).tolist()
+                )
+                self.get_logger().info(
+                    "Loaded hand-eye session state: "
+                    f"tcp<-camera={self.tcp_camera_source}, board_center={center_text}"
+                )
+        except (OSError, TypeError, ValueError, yaml.YAMLError) as exc:
+            self.get_logger().warn(f"Could not load session state from {path}: {exc}")
+
     def update_board_estimate(self, observation):
         self.T_base_board = (
             observation["T_base_tcp"] @ self.T_tcp_camera @ observation["T_camera_board"]
@@ -1666,6 +1709,18 @@ def average_transforms(transforms):
         R = u @ vt
     T_mean[:3, :3] = R
     return T_mean
+
+
+def matrix_from_flat_list(values):
+    if values is None:
+        return None
+    matrix = np.asarray(values, dtype=np.float64)
+    if matrix.size != 16:
+        return None
+    matrix = matrix.reshape(4, 4)
+    if not np.all(np.isfinite(matrix)):
+        return None
+    return matrix
 
 
 def slew_vector(current, target, max_delta):
