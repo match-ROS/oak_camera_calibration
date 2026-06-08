@@ -119,6 +119,11 @@ def generate_launch_description():
                 "robot_name": robot_name,
                 "arm": arm,
                 "twist_topic": LaunchConfiguration("jog_twist_topic"),
+                "action_name": LaunchConfiguration("action_name"),
+                "home_pose_file": LaunchConfiguration("jog_home_pose_file"),
+                "home_max_linear_velocity": LaunchConfiguration("jog_home_max_linear_velocity"),
+                "home_max_angular_velocity": LaunchConfiguration("jog_home_max_angular_velocity"),
+                "home_timeout": LaunchConfiguration("jog_home_timeout"),
                 "jog_frame": LaunchConfiguration("jog_frame"),
                 "linear_velocity": LaunchConfiguration("jog_linear_velocity"),
                 "angular_velocity": LaunchConfiguration("jog_angular_velocity"),
@@ -155,6 +160,19 @@ def generate_launch_description():
             DeclareLaunchArgument("jog_gui_enabled", default_value="true"),
             DeclareLaunchArgument("jog_gui_window_name", default_value="mur620 robot jog"),
             DeclareLaunchArgument(
+                "jog_home_pose_file",
+                default_value=PathJoinSubstitution(
+                    [
+                        FindPackageShare("oak_camera_calibration"),
+                        "config",
+                        "mur620_ur10_r_home.yaml",
+                    ]
+                ),
+            ),
+            DeclareLaunchArgument("jog_home_max_linear_velocity", default_value="0.025"),
+            DeclareLaunchArgument("jog_home_max_angular_velocity", default_value="0.10"),
+            DeclareLaunchArgument("jog_home_timeout", default_value="30.0"),
+            DeclareLaunchArgument(
                 "jog_twist_topic",
                 default_value="/mur620/jparse_velocity_controller_r/twist_cmd",
             ),
@@ -181,7 +199,7 @@ def generate_launch_description():
             DeclareLaunchArgument("target_max_tcp_delta_m", default_value="0.25"),
             DeclareLaunchArgument("target_max_camera_delta_m", default_value="0.30"),
             DeclareLaunchArgument("target_min_camera_delta_m", default_value="0.04"),
-            DeclareLaunchArgument("target_max_rotation_deg", default_value="25.0"),
+            DeclareLaunchArgument("target_max_rotation_deg", default_value="35.0"),
             DeclareLaunchArgument("use_camera_tf_initial_guess", default_value="true"),
             DeclareLaunchArgument("require_tcp_camera_estimate_for_targets", default_value="true"),
             DeclareLaunchArgument("camera_look_axis", default_value="plus_z"),

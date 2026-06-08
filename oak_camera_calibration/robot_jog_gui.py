@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
+import os
 import time
 
 import cv2
 import numpy as np
 import rclpy
+import yaml
+from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import TwistStamped
+from mur_control.action import JparseMove
+from rclpy.action import ActionClient
 from rclpy.node import Node
 
 
@@ -15,6 +20,11 @@ class RobotJogGui(Node):
         self.declare_parameter("robot_name", "mur620")
         self.declare_parameter("arm", "r")
         self.declare_parameter("twist_topic", "")
+        self.declare_parameter("action_name", "")
+        self.declare_parameter("home_pose_file", "")
+        self.declare_parameter("home_max_linear_velocity", 0.025)
+        self.declare_parameter("home_max_angular_velocity", 0.10)
+        self.declare_parameter("home_timeout", 30.0)
         self.declare_parameter("jog_frame", "")
         self.declare_parameter("linear_velocity", 0.03)
         self.declare_parameter("angular_velocity", 0.25)
@@ -30,10 +40,14 @@ class RobotJogGui(Node):
         self.twist_topic = self.param_or_default(
             "twist_topic", f"/{robot_name}/jparse_velocity_controller_{arm}/twist_cmd"
         )
+        self.action_name = self.param_or_default("action_name", f"/{robot_name}/jparse_move_{arm}")
+        self.home_pose_file = str(self.get_parameter("home_pose_file").value)
         self.jog_frame = self.param_or_default("jog_frame", f"UR10_{arm}/base_link")
         self.window_name = str(self.get_parameter("window_name").value)
 
         self.publisher = self.create_publisher(TwistStamped, self.twist_topic, 10)
+        self.action_client = ActionClient(self, JparseMove, self.action_name)
+        self.home_pose = self.load_home_pose()
         self.target_linear = np.zeros(3, dtype=np.float64)
         self.target_angular = np.zeros(3, dtype=np.float64)
         self.current_linear = np.zeros(3, dtype=np.float64)
@@ -47,7 +61,8 @@ class RobotJogGui(Node):
         self.buttons = []
 
         self.get_logger().info(
-            f"Robot jog GUI publishing {self.twist_topic} in frame {self.jog_frame}"
+            f"Robot jog GUI publishing {self.twist_topic} in frame {self.jog_frame}; "
+            f"home action={self.action_name}"
         )
 
     def run(self):
@@ -86,6 +101,8 @@ class RobotJogGui(Node):
             (24, 218),
             color=(180, 230, 180),
         )
+        home_text = "home: loaded" if self.home_pose is not None else "home: missing"
+        self.put_text(image, home_text, (430, 218), color=(255, 220, 170))
 
         self.add_button(image, "Y+", (140, 270, 110, 58), [0, 1, 0], [0, 0, 0])
         self.add_button(image, "Y-", (140, 400, 110, 58), [0, -1, 0], [0, 0, 0])
@@ -101,6 +118,7 @@ class RobotJogGui(Node):
         self.add_button(image, "RZ+", (565, 400, 74, 58), [0, 0, 0], [0, 0, 1])
         self.add_button(image, "RZ-", (650, 400, 74, 58), [0, 0, 0], [0, 0, -1])
 
+        self.add_home_button(image, (575, 170, 120, 64))
         self.add_button(image, "STOP", (300, 470, 160, 48), [0, 0, 0], [0, 0, 0])
 
         self.put_text(
@@ -114,7 +132,15 @@ class RobotJogGui(Node):
 
     def add_button(self, image, label, rect, linear_unit, angular_unit):
         x, y, w, h = rect
-        self.buttons.append((rect, np.array(linear_unit), np.array(angular_unit), label))
+        self.buttons.append(
+            {
+                "rect": rect,
+                "linear": np.array(linear_unit),
+                "angular": np.array(angular_unit),
+                "label": label,
+                "action": "jog",
+            }
+        )
         active = (
             self.mouse_button_command == label
             or label == "STOP"
@@ -129,13 +155,63 @@ class RobotJogGui(Node):
         ty = y + (h + text_size[1]) // 2
         self.put_text(image, label, (tx, ty), scale=0.75, thickness=2)
 
+    def add_home_button(self, image, rect):
+        x, y, w, h = rect
+        self.buttons.append(
+            {
+                "rect": rect,
+                "linear": np.zeros(3, dtype=np.float64),
+                "angular": np.zeros(3, dtype=np.float64),
+                "label": "HOME",
+                "action": "home",
+            }
+        )
+        color = (78, 92, 62) if self.home_pose is not None else (54, 54, 54)
+        cv2.rectangle(image, (x, y), (x + w, y + h), color, -1)
+        cv2.rectangle(image, (x, y), (x + w, y + h), (180, 180, 180), 1)
+        self.draw_home_icon(image, x + 22, y + 14, scale=1.0)
+        self.put_text(image, "HOME", (x + 56, y + 39), scale=0.62, thickness=2)
+
+    def draw_home_icon(self, image, x, y, scale=1.0):
+        s = int(26 * scale)
+        roof = np.array(
+            [
+                [x, y + s // 2],
+                [x + s // 2, y],
+                [x + s, y + s // 2],
+            ],
+            dtype=np.int32,
+        )
+        cv2.polylines(image, [roof], False, (245, 245, 245), 3, cv2.LINE_AA)
+        cv2.rectangle(
+            image,
+            (x + 5, y + s // 2),
+            (x + s - 5, y + s + 8),
+            (245, 245, 245),
+            2,
+            cv2.LINE_AA,
+        )
+        cv2.rectangle(
+            image,
+            (x + s // 2 - 4, y + s // 2 + 10),
+            (x + s // 2 + 4, y + s + 8),
+            (245, 245, 245),
+            2,
+            cv2.LINE_AA,
+        )
+
     def on_mouse(self, event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
-            for rect, linear_unit, angular_unit, label in self.buttons:
+            for button in self.buttons:
+                rect = button["rect"]
                 bx, by, bw, bh = rect
                 if bx <= x <= bx + bw and by <= y <= by + bh:
-                    self.mouse_button_command = label
-                    self.set_command(linear_unit, angular_unit, f"mouse {label}")
+                    if button["action"] == "home":
+                        self.mouse_button_command = None
+                        self.go_home()
+                        return
+                    self.mouse_button_command = button["label"]
+                    self.set_command(button["linear"], button["angular"], f"mouse {button['label']}")
                     return
         if event in (cv2.EVENT_LBUTTONUP, cv2.EVENT_RBUTTONDOWN):
             self.mouse_button_command = None
@@ -157,6 +233,9 @@ class RobotJogGui(Node):
             self.last_command_text = (
                 f"mode {'rotation' if self.rotation_mode else 'translation'}"
             )
+            return True
+        if char == "h":
+            self.go_home()
             return True
 
         linear, angular = self.command_from_key(name)
@@ -256,6 +335,93 @@ class RobotJogGui(Node):
         msg.twist.angular.y = float(angular[1])
         msg.twist.angular.z = float(angular[2])
         self.publisher.publish(msg)
+
+    def load_home_pose(self):
+        if not self.home_pose_file:
+            self.get_logger().warn("No home_pose_file configured; home button disabled.")
+            return None
+        path = os.path.expanduser(self.home_pose_file)
+        if not os.path.exists(path):
+            self.get_logger().warn(f"Home pose file does not exist: {path}")
+            return None
+        with open(path, "r", encoding="utf-8") as stream:
+            data = yaml.safe_load(stream) or {}
+        pose = data.get("pose") or {}
+        position = pose.get("position") or {}
+        orientation = pose.get("orientation") or {}
+        try:
+            return {
+                "frame_id": str(data["frame_id"]),
+                "position": [
+                    float(position["x"]),
+                    float(position["y"]),
+                    float(position["z"]),
+                ],
+                "orientation": [
+                    float(orientation["x"]),
+                    float(orientation["y"]),
+                    float(orientation["z"]),
+                    float(orientation["w"]),
+                ],
+            }
+        except (KeyError, TypeError, ValueError) as exc:
+            self.get_logger().error(f"Invalid home pose file {path}: {exc}")
+            return None
+
+    def go_home(self):
+        if self.home_pose is None:
+            self.last_command_text = "home unavailable"
+            self.get_logger().warn("Home pose is unavailable.")
+            return
+        self.stop()
+        if not self.action_client.wait_for_server(timeout_sec=2.0):
+            self.last_command_text = "home action unavailable"
+            self.get_logger().error(f"Action server not available: {self.action_name}")
+            return
+
+        goal = JparseMove.Goal()
+        goal.mode = "task_space"
+        goal.accuracy = "approach"
+        goal.target_pose = self.home_pose_stamped()
+        goal.max_linear_velocity = float(self.get_parameter("home_max_linear_velocity").value)
+        goal.max_angular_velocity = float(self.get_parameter("home_max_angular_velocity").value)
+        goal.timeout = float(self.get_parameter("home_timeout").value)
+
+        self.last_command_text = "home: moving"
+        self.get_logger().info(
+            f"Sending home pose to {self.action_name}: "
+            f"p={np.round(self.home_pose['position'], 4).tolist()}"
+        )
+        future = self.action_client.send_goal_async(goal)
+        wait_for_future(self, future)
+        goal_handle = future.result()
+        if goal_handle is None or not goal_handle.accepted:
+            self.last_command_text = "home rejected"
+            self.get_logger().warn("Home goal was rejected.")
+            return
+
+        result_future = goal_handle.get_result_async()
+        wait_for_future(self, result_future)
+        result = result_future.result().result
+        self.last_command_text = "home reached" if result.success else "home failed"
+        self.get_logger().info(
+            f"Home result: success={result.success}, message={result.message}, "
+            f"pos_err={result.final_position_error:.4f}, ori_err={result.final_orientation_error:.4f}"
+        )
+
+    def home_pose_stamped(self):
+        msg = PoseStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = self.home_pose["frame_id"]
+        msg.pose.position.x = self.home_pose["position"][0]
+        msg.pose.position.y = self.home_pose["position"][1]
+        msg.pose.position.z = self.home_pose["position"][2]
+        q = normalize_quaternion(self.home_pose["orientation"])
+        msg.pose.orientation.x = q[0]
+        msg.pose.orientation.y = q[1]
+        msg.pose.orientation.z = q[2]
+        msg.pose.orientation.w = q[3]
+        return msg
 
     def stop(self):
         self.target_linear = np.zeros(3, dtype=np.float64)
@@ -357,6 +523,19 @@ def slew_vector(current, target, max_delta):
     if norm <= max_delta or norm < 1.0e-12:
         return target.copy()
     return current + delta * (max_delta / norm)
+
+
+def normalize_quaternion(quaternion):
+    q = np.asarray(quaternion, dtype=np.float64)
+    norm = np.linalg.norm(q)
+    if norm < 1.0e-12:
+        return np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float64)
+    return q / norm
+
+
+def wait_for_future(node, future):
+    while rclpy.ok() and not future.done():
+        rclpy.spin_once(node, timeout_sec=0.05)
 
 
 def main(args=None):

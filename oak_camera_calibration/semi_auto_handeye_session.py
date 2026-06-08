@@ -77,7 +77,7 @@ class SemiAutoHandeyeSession(Node):
         self.declare_parameter("target_max_tcp_delta_m", 0.25)
         self.declare_parameter("target_max_camera_delta_m", 0.30)
         self.declare_parameter("target_min_camera_delta_m", 0.04)
-        self.declare_parameter("target_max_rotation_deg", 25.0)
+        self.declare_parameter("target_max_rotation_deg", 35.0)
         self.declare_parameter("use_camera_tf_initial_guess", True)
         self.declare_parameter("require_tcp_camera_estimate_for_targets", True)
         self.declare_parameter("camera_look_axis", "plus_z")

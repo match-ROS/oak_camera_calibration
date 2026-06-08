@@ -1,0 +1,15 @@
+frame_id: mur620/UR10_r/base_link
+pose:
+  position:
+    x: 0.592
+    y: -0.003
+    z: 0.714
+  orientation:
+    x: 0.994
+    y: 0.107
+    z: 0.001
+    w: 0.004
+source:
+  child_frame: mur620/UR10_r/tool0
+  captured_at: '2026-06-08T16:21:09+02:00'
+  note: Captured from tf2_echo mur620/UR10_r/base_link -> mur620/UR10_r/tool0.
