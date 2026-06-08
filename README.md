@@ -164,8 +164,9 @@ The launch defaults are for the OAK mounted on the right arm:
 - `action_name:=/mur620/jparse_move_r`
 - `jog_twist_topic:=/mur620/jparse_velocity_controller_r/twist_cmd`
 - `jog_frame:=UR10_r/base_link`
+- `jog_gui_enabled:=true`
 - `move_enabled:=false`
-- `keyboard_jog_enabled:=true`
+- `keyboard_jog_enabled:=false`
 - `dictionary:=DICT_4X4_250`
 - `board_id_order:=column_major`
 - `square_length_m:=0.065`
@@ -175,10 +176,15 @@ The launch defaults are for the OAK mounted on the right arm:
 - `max_linear_velocity:=0.025`
 - `max_angular_velocity:=0.10`
 - `target_max_tcp_delta_m:=0.25`
+- `target_max_camera_delta_m:=0.30`
 - `target_max_rotation_deg:=25.0`
+- `target_pattern:=spiral_hemisphere`
+- `samples:=18`
+- `sphere_polar_span_deg:=50.0`
+- `sphere_spiral_turns:=1.25`
 
-The session estimates the board pose from the first usable view, generates
-nearby viewpoints on a sphere around the board center, and writes the same
+The session estimates the board pose from the first usable view, generates a
+3D spiral on a hemisphere around the board center, and writes the same
 `sample_*.json` files used by `compute_handeye`. By default it writes to
 `~/oak_charuco_column_major_handeye_samples` so older samples captured with the
 wrong OpenCV row-major board model are not mixed into the solve.
@@ -207,12 +213,17 @@ In the GUI, use:
 - `b`: move back to the first valid TCP pose captured after session start
 - `c`: save the current sample
 - `v`: flip the camera look axis for target generation, then press `n` again
-- arrow keys and `PgUp`/`PgDn`: manual Cartesian jog
+- manual Cartesian jog is handled by the separate `mur620 robot jog` window
 - `m`: toggle translation/rotation jog mode
 - `q` or `Esc`: close the GUI
 
+In the separate jog GUI, hold the on-screen buttons to jog the robot. Keyboard
+fallbacks are arrow keys for XY, `PgUp`/`PgDn` for Z, `m` to toggle rotation
+mode, `i/k`, `j/l`, `u/o` for direct rotation, space or `.` to stop, and `q`
+to close only the jog window.
+
 The terminal prompts before every automatic move and before every saved sample.
-After at least three usable samples it updates the current `tcp <- camera`
+After at least four usable samples it updates the current `tcp <- camera`
 estimate and stores the latest session state in `semi_auto_session_state.yaml`.
 
 The saved ChArUco samples can be solved explicitly with:

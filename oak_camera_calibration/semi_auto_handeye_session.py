@@ -63,10 +63,13 @@ class SemiAutoHandeyeSession(Node):
         self.declare_parameter("display_max_side", 1600)
         self.declare_parameter("draw_rejected_markers", True)
         self.declare_parameter("planning_frame", "")
-        self.declare_parameter("samples", 12)
+        self.declare_parameter("samples", 18)
         self.declare_parameter("sphere_radius_m", 0.0)
         self.declare_parameter("sphere_yaw_span_deg", 30.0)
         self.declare_parameter("sphere_pitch_span_deg", 20.0)
+        self.declare_parameter("target_pattern", "spiral_hemisphere")
+        self.declare_parameter("sphere_polar_span_deg", 50.0)
+        self.declare_parameter("sphere_spiral_turns", 1.25)
         self.declare_parameter("max_linear_velocity", 0.025)
         self.declare_parameter("max_angular_velocity", 0.10)
         self.declare_parameter("move_timeout", 30.0)
@@ -167,6 +170,9 @@ class SemiAutoHandeyeSession(Node):
         self.gui_target_total = max(1, int(self.get_parameter("samples").value))
         self.gui_visited_target_positions = []
         self.gui_sphere_radius = None
+        self.sphere_zenith_direction = None
+        self.sphere_tangent_x = None
+        self.sphere_tangent_y = None
         self.gui_target_summary_lines = [
             "target: press n to propose next sphere pose",
             "target move: press g after checking deltas",
@@ -1095,6 +1101,10 @@ class SemiAutoHandeyeSession(Node):
         return (self.T_base_board @ board_center)[:3]
 
     def generate_targets(self, T_base_tcp_current, radius):
+        pattern = str(self.get_parameter("target_pattern").value).lower()
+        if pattern in ("spiral", "spiral_hemisphere", "hemisphere_spiral"):
+            return self.generate_spiral_hemisphere_targets(T_base_tcp_current, radius)
+
         board_center = self.board_center_in_base()
         T_base_camera_current = T_base_tcp_current @ self.T_tcp_camera
         current_camera = T_base_camera_current[:3, 3]
@@ -1140,7 +1150,86 @@ class SemiAutoHandeyeSession(Node):
         candidates.sort(key=lambda pose: np.linalg.norm(pose[:3, 3] - T_base_tcp_current[:3, 3]))
         return candidates[:sample_count]
 
+    def generate_spiral_hemisphere_targets(self, T_base_tcp_current, radius):
+        board_center = self.board_center_in_base()
+        T_base_camera_current = T_base_tcp_current @ self.T_tcp_camera
+        current_camera = T_base_camera_current[:3, 3]
+        current_camera_rotation = T_base_camera_current[:3, :3]
+        if self.sphere_zenith_direction is None:
+            self.initialize_spiral_frame(current_camera, board_center, current_camera_rotation)
+
+        sample_count = max(1, int(self.get_parameter("samples").value))
+        polar_span = math.radians(float(self.get_parameter("sphere_polar_span_deg").value))
+        polar_span = float(np.clip(polar_span, math.radians(1.0), math.radians(85.0)))
+        turns = max(0.25, float(self.get_parameter("sphere_spiral_turns").value))
+        candidate_count = max(sample_count + 1, 2)
+
+        candidates = []
+        for index in range(candidate_count):
+            if index == 0:
+                polar = 0.0
+                azimuth = 0.0
+            else:
+                t = index / float(candidate_count - 1)
+                polar = polar_span * math.sqrt(t)
+                azimuth = 2.0 * math.pi * turns * t
+            tangent = (
+                math.cos(azimuth) * self.sphere_tangent_x
+                + math.sin(azimuth) * self.sphere_tangent_y
+            )
+            direction = normalize(
+                math.cos(polar) * self.sphere_zenith_direction
+                + math.sin(polar) * tangent
+            )
+            T_base_camera = look_at_camera_pose(
+                board_center + radius * direction,
+                board_center,
+                reference_rotation=current_camera_rotation,
+                look_axis=self.camera_look_axis_value,
+            )
+            candidates.append(T_base_camera @ np.linalg.inv(self.T_tcp_camera))
+        return candidates
+
+    def initialize_spiral_frame(self, current_camera, board_center, current_camera_rotation):
+        zenith = normalize(current_camera - board_center)
+        x_axis = current_camera_rotation[:3, 0]
+        tangent_x = x_axis - zenith * np.dot(x_axis, zenith)
+        if np.linalg.norm(tangent_x) <= 1.0e-6:
+            for fallback in (
+                np.array([1.0, 0.0, 0.0], dtype=np.float64),
+                np.array([0.0, 1.0, 0.0], dtype=np.float64),
+                np.array([0.0, 0.0, 1.0], dtype=np.float64),
+            ):
+                tangent_x = fallback - zenith * np.dot(fallback, zenith)
+                if np.linalg.norm(tangent_x) > 1.0e-6:
+                    break
+        tangent_x = normalize(tangent_x)
+        tangent_y = normalize(np.cross(zenith, tangent_x))
+        self.sphere_zenith_direction = zenith
+        self.sphere_tangent_x = tangent_x
+        self.sphere_tangent_y = tangent_y
+        self.get_logger().info(
+            "Initialized spiral hemisphere frame: "
+            f"zenith={np.round(zenith, 4).tolist()}, "
+            f"tangent_x={np.round(tangent_x, 4).tolist()}, "
+            f"tangent_y={np.round(tangent_y, 4).tolist()}"
+        )
+
     def select_next_target(self, targets, current_pose, visited_positions):
+        if str(self.get_parameter("target_pattern").value).lower() in (
+            "spiral",
+            "spiral_hemisphere",
+            "hemisphere_spiral",
+        ):
+            current_position = current_pose[:3, 3]
+            for target in targets:
+                target_position = target[:3, 3]
+                if np.linalg.norm(target_position - current_position) < 0.015:
+                    continue
+                if any(np.linalg.norm(target_position - visited) < 0.025 for visited in visited_positions):
+                    continue
+                return target
+
         current_position = current_pose[:3, 3]
         scored_targets = []
         for target in targets:
@@ -1285,6 +1374,12 @@ class SemiAutoHandeyeSession(Node):
         self.T_tcp_camera = candidate
         self.has_handeye_estimate = True
         self.tcp_camera_source = f"handeye:{method}"
+        self.T_base_board = average_transforms(
+            [record.T_base_tcp @ candidate @ record.T_camera_target for record in records]
+        )
+        self.sphere_zenith_direction = None
+        self.sphere_tangent_x = None
+        self.sphere_tangent_y = None
         self.get_logger().info(
             "Updated tcp<-camera: "
             f"t={np.round(self.T_tcp_camera[:3, 3], 5).tolist()}, "
@@ -1516,6 +1611,24 @@ def normalize(vector):
     if norm < 1.0e-9:
         return np.array([1.0, 0.0, 0.0], dtype=np.float64)
     return vector / norm
+
+
+def average_transforms(transforms):
+    transforms = [np.asarray(transform, dtype=np.float64) for transform in transforms]
+    if not transforms:
+        return np.eye(4, dtype=np.float64)
+
+    T_mean = np.eye(4, dtype=np.float64)
+    T_mean[:3, 3] = np.mean([transform[:3, 3] for transform in transforms], axis=0)
+
+    R_mean = np.mean([transform[:3, :3] for transform in transforms], axis=0)
+    u, _, vt = np.linalg.svd(R_mean)
+    R = u @ vt
+    if np.linalg.det(R) < 0.0:
+        u[:, -1] *= -1.0
+        R = u @ vt
+    T_mean[:3, :3] = R
+    return T_mean
 
 
 def slew_vector(current, target, max_delta):

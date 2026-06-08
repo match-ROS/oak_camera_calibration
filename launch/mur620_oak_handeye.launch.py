@@ -65,6 +65,9 @@ def generate_launch_description():
                 "sphere_radius_m": LaunchConfiguration("sphere_radius_m"),
                 "sphere_yaw_span_deg": LaunchConfiguration("sphere_yaw_span_deg"),
                 "sphere_pitch_span_deg": LaunchConfiguration("sphere_pitch_span_deg"),
+                "target_pattern": LaunchConfiguration("target_pattern"),
+                "sphere_polar_span_deg": LaunchConfiguration("sphere_polar_span_deg"),
+                "sphere_spiral_turns": LaunchConfiguration("sphere_spiral_turns"),
                 "max_linear_velocity": LaunchConfiguration("max_linear_velocity"),
                 "max_angular_velocity": LaunchConfiguration("max_angular_velocity"),
                 "move_timeout": LaunchConfiguration("move_timeout"),
@@ -102,6 +105,30 @@ def generate_launch_description():
         ],
     )
 
+    jog_gui = Node(
+        package="oak_camera_calibration",
+        executable="robot_jog_gui",
+        name="robot_jog_gui",
+        output="screen",
+        emulate_tty=True,
+        condition=IfCondition(LaunchConfiguration("jog_gui_enabled")),
+        parameters=[
+            {
+                "robot_name": robot_name,
+                "arm": arm,
+                "twist_topic": LaunchConfiguration("jog_twist_topic"),
+                "jog_frame": LaunchConfiguration("jog_frame"),
+                "linear_velocity": LaunchConfiguration("jog_linear_velocity"),
+                "angular_velocity": LaunchConfiguration("jog_angular_velocity"),
+                "linear_acceleration": LaunchConfiguration("jog_linear_acceleration"),
+                "angular_acceleration": LaunchConfiguration("jog_angular_acceleration"),
+                "hold_timeout": LaunchConfiguration("jog_hold_timeout"),
+                "window_name": LaunchConfiguration("jog_gui_window_name"),
+                "log_key_codes": LaunchConfiguration("log_key_codes"),
+            }
+        ],
+    )
+
     return LaunchDescription(
         [
             DeclareLaunchArgument("robot_name", default_value="mur620"),
@@ -122,7 +149,9 @@ def generate_launch_description():
             DeclareLaunchArgument("action_name", default_value="/mur620/jparse_move_r"),
             DeclareLaunchArgument("move_enabled", default_value="false"),
             DeclareLaunchArgument("gui_enabled", default_value="true"),
-            DeclareLaunchArgument("keyboard_jog_enabled", default_value="true"),
+            DeclareLaunchArgument("keyboard_jog_enabled", default_value="false"),
+            DeclareLaunchArgument("jog_gui_enabled", default_value="true"),
+            DeclareLaunchArgument("jog_gui_window_name", default_value="mur620 robot jog"),
             DeclareLaunchArgument(
                 "jog_twist_topic",
                 default_value="/mur620/jparse_velocity_controller_r/twist_cmd",
@@ -136,10 +165,13 @@ def generate_launch_description():
             DeclareLaunchArgument("log_key_codes", default_value="true"),
             DeclareLaunchArgument("display_max_side", default_value="1600"),
             DeclareLaunchArgument("draw_rejected_markers", default_value="true"),
-            DeclareLaunchArgument("samples", default_value="12"),
+            DeclareLaunchArgument("samples", default_value="18"),
             DeclareLaunchArgument("sphere_radius_m", default_value="0.0"),
             DeclareLaunchArgument("sphere_yaw_span_deg", default_value="30.0"),
             DeclareLaunchArgument("sphere_pitch_span_deg", default_value="20.0"),
+            DeclareLaunchArgument("target_pattern", default_value="spiral_hemisphere"),
+            DeclareLaunchArgument("sphere_polar_span_deg", default_value="50.0"),
+            DeclareLaunchArgument("sphere_spiral_turns", default_value="1.25"),
             DeclareLaunchArgument("max_linear_velocity", default_value="0.025"),
             DeclareLaunchArgument("max_angular_velocity", default_value="0.10"),
             DeclareLaunchArgument("move_timeout", default_value="30.0"),
@@ -165,5 +197,6 @@ def generate_launch_description():
             DeclareLaunchArgument("refine_max_side", default_value="2200"),
             camera_driver,
             handeye_session,
+            jog_gui,
         ]
     )
