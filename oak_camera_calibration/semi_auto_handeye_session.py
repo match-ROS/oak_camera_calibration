@@ -42,7 +42,10 @@ class SemiAutoHandeyeSession(Node):
 
         self.declare_parameter("image_topic", "/oak/rgb/image_raw")
         self.declare_parameter("camera_info_topic", "/oak/rgb/camera_info")
-        self.declare_parameter("output_dir", "~/oak_charuco_column_major_handeye_samples")
+        self.declare_parameter(
+            "output_dir",
+            "~/oak_charuco_6x9_column_major_handeye_samples",
+        )
         self.declare_parameter("sample_prefix", "sample")
         self.declare_parameter("robot_name", "mur620")
         self.declare_parameter("arm", "r")
@@ -62,6 +65,7 @@ class SemiAutoHandeyeSession(Node):
         self.declare_parameter("log_key_codes", True)
         self.declare_parameter("display_max_side", 1600)
         self.declare_parameter("draw_rejected_markers", True)
+        self.declare_parameter("draw_board_center_overlay", True)
         self.declare_parameter("planning_frame", "")
         self.declare_parameter("samples", 18)
         self.declare_parameter("sphere_radius_m", 0.0)
@@ -78,17 +82,22 @@ class SemiAutoHandeyeSession(Node):
         self.declare_parameter("target_max_camera_delta_m", 0.30)
         self.declare_parameter("target_min_camera_delta_m", 0.04)
         self.declare_parameter("target_max_rotation_deg", 35.0)
+        self.declare_parameter("split_target_motion", True)
+        self.declare_parameter("split_rotation_step_deg", 25.0)
+        self.declare_parameter("center_camera_xy_only", True)
         self.declare_parameter("use_camera_tf_initial_guess", True)
         self.declare_parameter("load_session_state", True)
         self.declare_parameter("require_tcp_camera_estimate_for_targets", True)
         self.declare_parameter("camera_look_axis", "plus_z")
+        self.declare_parameter("camera_roll_reference", "current")
+        self.declare_parameter("target_max_camera_z_above_start_m", 0.01)
         self.declare_parameter("handeye_method", "tsai")
         self.declare_parameter("handeye_min_samples", 4)
         self.declare_parameter("handeye_max_residual_translation_m", 0.05)
         self.declare_parameter("handeye_max_residual_rotation_deg", 10.0)
         self.declare_parameter("handeye_max_tcp_camera_translation_m", 0.75)
 
-        self.declare_parameter("squares_x", 14)
+        self.declare_parameter("squares_x", 6)
         self.declare_parameter("squares_y", 9)
         self.declare_parameter("square_length_m", 0.065)
         self.declare_parameter("marker_length_m", 0.048)
@@ -167,6 +176,9 @@ class SemiAutoHandeyeSession(Node):
         self.camera_look_axis_value = self.normalize_camera_look_axis(
             self.get_parameter("camera_look_axis").value
         )
+        self.camera_roll_reference_value = self.normalize_camera_roll_reference(
+            self.get_parameter("camera_roll_reference").value
+        )
         self.gui_target = None
         self.gui_target_current_pose = None
         self.gui_target_index = 0
@@ -176,6 +188,7 @@ class SemiAutoHandeyeSession(Node):
         self.sphere_zenith_direction = None
         self.sphere_tangent_x = None
         self.sphere_tangent_y = None
+        self.sphere_start_camera_z = None
         self.gui_target_summary_lines = [
             "target: press n to propose next sphere pose",
             "target move: press g after checking deltas",
@@ -210,6 +223,10 @@ class SemiAutoHandeyeSession(Node):
         )
         self.get_logger().info(
             f"Camera look axis for target generation: {self.camera_look_axis_value}"
+        )
+        self.get_logger().info(
+            "Camera roll reference for target generation: "
+            f"{self.camera_roll_reference_value}"
         )
 
     def run_session(self):
@@ -306,7 +323,9 @@ class SemiAutoHandeyeSession(Node):
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         self.get_logger().info(
             "GUI keys: n=next target, g=go to shown target, b=back to start pose, "
-            "c=save sample/frame, v=flip camera look axis, q=quit, .=stop, "
+            "c=save sample/frame, z=center camera, p=point camera, v=flip camera look axis, "
+            "r=cycle roll reference, "
+            "q=quit, .=stop, "
             "arrows=XY, PgUp/PgDn=Z, Ctrl+arrows/PgUp/PgDn=rotation. "
             "If Ctrl is not detected by OpenCV, use i/k j/l u/o or press m to toggle rotation mode."
         )
@@ -388,21 +407,29 @@ class SemiAutoHandeyeSession(Node):
         detection = frame["detection"]
         camera_matrix = frame["camera_matrix"]
         distortion_coeffs = frame["distortion_coeffs"]
+        board_center_overlay = ""
         if detection is None:
             view = image.copy()
         else:
-            view = self.detector.draw_detection(
+            view = self.annotated_detection_image(
                 image,
                 detection,
                 camera_matrix,
                 distortion_coeffs,
                 draw_rejected=bool(self.get_parameter("draw_rejected_markers").value),
             )
+            board_center_overlay = self.board_center_overlay_text(
+                detection,
+                camera_matrix,
+                distortion_coeffs,
+                image.shape[:2],
+            )
 
         view = self.resize_for_display(view)
         status_lines = [
             self.last_wait_status,
             self.detection_summary(detection),
+            board_center_overlay,
             (
                 f"board: {self.detector.dictionary_name} "
                 f"{self.detector.squares_x}x{self.detector.squares_y} "
@@ -417,13 +444,14 @@ class SemiAutoHandeyeSession(Node):
             ),
             f"tcp<-camera: {self.tcp_camera_source}",
             f"look axis: {self.camera_look_axis_value} (v toggles, then press n)",
+            f"roll ref: {self.camera_roll_reference_value} (r cycles, then press n)",
             f"mode: {'rotation' if self.jog_rotation_mode else 'translation'}",
             f"last key: {self.last_key_text}",
             self.last_jog_text,
             f"jog frame: {self.jog_frame}",
             f"start pose: {self.initial_pose_source}",
             *self.gui_target_summary_lines,
-            "n=next g=go b=back c=save q=quit .=stop arrows=XY PgUp/PgDn=Z",
+            "n=next g=go z=center p=point b=back c=save v=look r=roll q=quit .=stop arrows=XY PgUp/PgDn=Z",
         ]
         self.draw_text_lines(view, status_lines)
         return view
@@ -443,6 +471,193 @@ class SemiAutoHandeyeSession(Node):
             f"charuco={detection.get('num_charuco_corners', 0)} "
             f"rejected={detection.get('num_rejected_candidates', 0)} "
             f"{pose_text}{pose_source} reproj={reproj_text}"
+        )
+
+    def annotated_detection_image(
+        self,
+        image,
+        detection,
+        camera_matrix,
+        distortion_coeffs,
+        draw_rejected=False,
+    ):
+        view = self.detector.draw_detection(
+            image,
+            detection,
+            camera_matrix,
+            distortion_coeffs,
+            draw_rejected=draw_rejected,
+        )
+        self.draw_board_center_overlay(
+            view,
+            detection,
+            camera_matrix,
+            distortion_coeffs,
+        )
+        return view
+
+    def board_center_overlay_text(
+        self,
+        detection,
+        camera_matrix,
+        distortion_coeffs,
+        image_shape,
+    ):
+        projection = self.board_overlay_projection(
+            detection,
+            camera_matrix,
+            distortion_coeffs,
+        )
+        if projection is None:
+            return ""
+        center_px = projection["center"]
+        h, w = image_shape
+        image_center = np.asarray([0.5 * w, 0.5 * h], dtype=np.float64)
+        delta = center_px - image_center
+        return f"board center px delta: dx={delta[0]:+.0f}, dy={delta[1]:+.0f}"
+
+    def draw_board_center_overlay(
+        self,
+        image,
+        detection,
+        camera_matrix,
+        distortion_coeffs,
+    ):
+        projection = self.board_overlay_projection(
+            detection,
+            camera_matrix,
+            distortion_coeffs,
+        )
+        if projection is None:
+            return
+
+        origin_px = projection["origin"]
+        center_px = projection["center"]
+        outer = projection["outer"].round().astype(int)
+        inner = projection["inner"].round().astype(int)
+        h, w = image.shape[:2]
+        image_center = np.asarray([0.5 * w, 0.5 * h], dtype=np.float64)
+
+        origin_i = tuple(np.round(origin_px).astype(int))
+        center_i = tuple(np.round(center_px).astype(int))
+        image_center_i = tuple(np.round(image_center).astype(int))
+
+        cv2.polylines(image, [outer], True, (0, 165, 255), 5, cv2.LINE_AA)
+        cv2.polylines(image, [inner], True, (0, 255, 120), 3, cv2.LINE_AA)
+        cv2.line(image, image_center_i, center_i, (0, 220, 255), 4, cv2.LINE_AA)
+        cv2.drawMarker(
+            image,
+            image_center_i,
+            (255, 255, 0),
+            markerType=cv2.MARKER_CROSS,
+            markerSize=56,
+            thickness=4,
+            line_type=cv2.LINE_AA,
+        )
+        cv2.drawMarker(
+            image,
+            center_i,
+            (255, 0, 255),
+            markerType=cv2.MARKER_TILTED_CROSS,
+            markerSize=70,
+            thickness=5,
+            line_type=cv2.LINE_AA,
+        )
+        cv2.circle(image, center_i, 26, (255, 0, 255), 5, cv2.LINE_AA)
+        cv2.drawMarker(
+            image,
+            origin_i,
+            (255, 90, 0),
+            markerType=cv2.MARKER_DIAMOND,
+            markerSize=48,
+            thickness=4,
+            line_type=cv2.LINE_AA,
+        )
+        self.draw_overlay_label(image, center_i, "board center", (255, 0, 255))
+        self.draw_overlay_label(image, origin_i, "board origin", (255, 90, 0))
+        self.draw_overlay_label(image, image_center_i, "image center", (255, 255, 0))
+
+    def board_overlay_projection(self, detection, camera_matrix, distortion_coeffs):
+        if not bool(self.get_parameter("draw_board_center_overlay").value):
+            return None
+        if detection is None or detection.get("pose") is None or camera_matrix is None:
+            return None
+
+        pose = detection["pose"]
+        rvec = np.asarray(pose["rvec"], dtype=np.float64).reshape(3, 1)
+        tvec = np.asarray(pose["tvec"], dtype=np.float64).reshape(3, 1)
+        camera_matrix = np.asarray(camera_matrix, dtype=np.float64)
+        distortion_coeffs = (
+            None
+            if distortion_coeffs is None
+            else np.asarray(distortion_coeffs, dtype=np.float64)
+        )
+        sx = float(self.detector.squares_x) * self.detector.square_length_m
+        sy = float(self.detector.squares_y) * self.detector.square_length_m
+        inner_min = np.array(
+            [self.detector.square_length_m, self.detector.square_length_m, 0.0],
+            dtype=np.float64,
+        )
+        inner_max = np.array(
+            [
+                (self.detector.squares_x - 1) * self.detector.square_length_m,
+                (self.detector.squares_y - 1) * self.detector.square_length_m,
+                0.0,
+            ],
+            dtype=np.float64,
+        )
+        object_points = np.asarray(
+            [
+                [0.0, 0.0, 0.0],
+                self.detector.board_center_offset(),
+                [0.0, 0.0, 0.0],
+                [sx, 0.0, 0.0],
+                [sx, sy, 0.0],
+                [0.0, sy, 0.0],
+                [inner_min[0], inner_min[1], 0.0],
+                [inner_max[0], inner_min[1], 0.0],
+                [inner_max[0], inner_max[1], 0.0],
+                [inner_min[0], inner_max[1], 0.0],
+            ],
+            dtype=np.float64,
+        )
+        projected, _ = cv2.projectPoints(
+            object_points,
+            rvec,
+            tvec,
+            camera_matrix,
+            distortion_coeffs,
+        )
+        projected = projected.reshape(-1, 2)
+        return {
+            "origin": projected[0],
+            "center": projected[1],
+            "outer": projected[2:6],
+            "inner": projected[6:10],
+        }
+
+    def draw_overlay_label(self, image, point, text, color):
+        x, y = point
+        label_pos = (int(x) + 14, int(y) - 14)
+        cv2.putText(
+            image,
+            text,
+            label_pos,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.9,
+            (0, 0, 0),
+            5,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            image,
+            text,
+            label_pos,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.9,
+            color,
+            3,
+            cv2.LINE_AA,
         )
 
     def handle_gui_key(self, key, frame):
@@ -468,6 +683,12 @@ class SemiAutoHandeyeSession(Node):
             return True
         if char == "g":
             self.go_to_gui_target()
+            return True
+        if char == "z":
+            self.center_camera_over_board()
+            return True
+        if char == "p":
+            self.point_camera_at_board()
             return True
         if char == "b":
             self.go_to_initial_pose()
@@ -498,6 +719,9 @@ class SemiAutoHandeyeSession(Node):
             return True
         if char == "v":
             self.toggle_camera_look_axis()
+            return True
+        if char == "r":
+            self.toggle_camera_roll_reference()
             return True
 
         linear, angular = self.jog_command_from_key(key)
@@ -544,6 +768,136 @@ class SemiAutoHandeyeSession(Node):
                 "initial pose remains stored; press b to retry",
             ]
 
+    def center_camera_over_board(self):
+        observation = self.current_observation()
+        if observation is None:
+            self.get_logger().warn(f"Cannot center camera yet: {self.last_wait_status}")
+            self.gui_target_summary_lines = [
+                f"center: unavailable, {self.last_wait_status}",
+                "wait for image, ChArUco pose, and robot TF",
+            ]
+            return
+        if not self.has_tcp_camera_estimate_for_targets():
+            self.get_logger().warn(
+                "Cannot center camera because tcp<-camera is still identity."
+            )
+            self.gui_target_summary_lines = [
+                f"center blocked: tcp<-camera is {self.tcp_camera_source}",
+                "need camera TF or accepted hand-eye estimate",
+            ]
+            return
+
+        self.update_board_estimate(observation)
+        target = self.center_camera_target(observation["T_base_tcp"])
+        metrics = self.target_motion_metrics(observation["T_base_tcp"], target)
+        self.gui_target = target
+        self.gui_target_current_pose = observation["T_base_tcp"].copy()
+        self.gui_target_summary_lines = [
+            (
+                f"center target: tcp {metrics['tcp_delta_norm']:.3f}m, "
+                f"camera {metrics['camera_delta_norm']:.3f}m, "
+                f"rot {metrics['tcp_rotation_deg']:.1f}deg"
+            ),
+            (
+                "center: "
+                f"dx={metrics['camera_delta_base'][0]:.3f}m "
+                f"dy={metrics['camera_delta_base'][1]:.3f}m; "
+                f"{'moving now' if self.move_enabled else 'press g to move'}"
+            ),
+        ]
+        print("")
+        self.print_target(0, self.gui_target_total, observation["T_base_tcp"], target)
+        self.get_logger().info(
+            "Prepared center-camera target: "
+            f"camera_delta={metrics['camera_delta_norm']:.3f} m, "
+            f"dx={metrics['camera_delta_base'][0]:.3f} m, "
+            f"dy={metrics['camera_delta_base'][1]:.3f} m"
+        )
+
+        if not self.move_enabled:
+            self.get_logger().warn("move_enabled is false; center target was prepared only.")
+            return
+
+        self.go_to_gui_target()
+
+    def center_camera_target(self, T_base_tcp_current):
+        T_base_camera_current = T_base_tcp_current @ self.T_tcp_camera
+        current_camera = T_base_camera_current[:3, 3]
+        board_center = self.board_center_in_base()
+        forward = self.camera_forward_vector(T_base_camera_current)
+        board_vector = board_center - current_camera
+        axial_distance = float(np.dot(board_vector, forward))
+        centered_camera = board_center - axial_distance * forward
+        if bool(self.get_parameter("center_camera_xy_only").value):
+            centered_camera[2] = current_camera[2]
+
+        T_base_camera_target = T_base_camera_current.copy()
+        T_base_camera_target[:3, 3] = centered_camera
+        return T_base_camera_target @ np.linalg.inv(self.T_tcp_camera)
+
+    def point_camera_at_board(self):
+        observation = self.current_observation()
+        if observation is None:
+            self.get_logger().warn(f"Cannot point camera yet: {self.last_wait_status}")
+            self.gui_target_summary_lines = [
+                f"point: unavailable, {self.last_wait_status}",
+                "wait for image, ChArUco pose, and robot TF",
+            ]
+            return
+        if not self.has_tcp_camera_estimate_for_targets():
+            self.get_logger().warn(
+                "Cannot point camera because tcp<-camera is still identity."
+            )
+            self.gui_target_summary_lines = [
+                f"point blocked: tcp<-camera is {self.tcp_camera_source}",
+                "need camera TF or accepted hand-eye estimate",
+            ]
+            return
+
+        self.update_board_estimate(observation)
+        target = self.point_camera_target(observation["T_base_tcp"])
+        metrics = self.target_motion_metrics(observation["T_base_tcp"], target)
+        self.gui_target = target
+        self.gui_target_current_pose = observation["T_base_tcp"].copy()
+        self.gui_target_summary_lines = [
+            (
+                f"point target: tcp {metrics['tcp_delta_norm']:.3f}m, "
+                f"camera {metrics['camera_delta_norm']:.3f}m, "
+                f"rot {metrics['tcp_rotation_deg']:.1f}deg"
+            ),
+            (
+                f"point: look {metrics['look_angle_deg']:.1f}deg; "
+                f"{'moving now' if self.move_enabled else 'press g to move'}"
+            ),
+        ]
+        print("")
+        self.print_target(0, self.gui_target_total, observation["T_base_tcp"], target)
+        self.get_logger().info(
+            "Prepared point-camera target: "
+            f"rot={metrics['tcp_rotation_deg']:.2f} deg, "
+            f"look={metrics['look_angle_deg']:.2f} deg"
+        )
+
+        if not self.move_enabled:
+            self.get_logger().warn("move_enabled is false; point target was prepared only.")
+            return
+
+        self.go_to_gui_target()
+
+    def point_camera_target(self, T_base_tcp_current):
+        T_base_camera_current = T_base_tcp_current @ self.T_tcp_camera
+        current_camera = T_base_camera_current[:3, 3]
+        current_camera_rotation = T_base_camera_current[:3, :3]
+        board_center = self.board_center_in_base()
+        T_base_camera_target = look_at_camera_pose(
+            current_camera,
+            board_center,
+            reference_rotation=current_camera_rotation,
+            look_axis=self.camera_look_axis_value,
+            roll_reference=self.camera_roll_reference(),
+        )
+        return T_base_camera_target @ np.linalg.inv(self.T_tcp_camera)
+
     def propose_gui_target(self, observation):
         if not self.has_tcp_camera_estimate_for_targets():
             self.gui_target = None
@@ -564,6 +918,18 @@ class SemiAutoHandeyeSession(Node):
             self.gui_sphere_radius = self._sphere_radius(observation["T_base_tcp"])
 
         targets = self.generate_targets(observation["T_base_tcp"], self.gui_sphere_radius)
+        if not targets:
+            self.gui_target = None
+            self.gui_target_current_pose = None
+            self.gui_target_summary_lines = [
+                "target blocked: no candidate below start camera height",
+                "jog lower/sideways or increase target_max_camera_z_above_start_m",
+            ]
+            self.get_logger().warn(
+                "No target candidates remain after start-height filtering. "
+                "Jog lower/sideways or increase target_max_camera_z_above_start_m."
+            )
+            return
         target = self.select_next_target(
             targets,
             observation["T_base_tcp"],
@@ -619,8 +985,6 @@ class SemiAutoHandeyeSession(Node):
                 "target move: not sent",
             ]
             return
-        if not self.gui_target_is_safe():
-            return
         if not self.move_enabled:
             self.get_logger().warn("move_enabled is false; target was not sent.")
             self.gui_target_summary_lines = [
@@ -629,14 +993,30 @@ class SemiAutoHandeyeSession(Node):
             ]
             return
 
+        observation = self.current_observation()
+        current_pose = (
+            observation["T_base_tcp"].copy()
+            if observation is not None
+            else self.gui_target_current_pose
+        )
+        motion_sequence = self.plan_target_motion_sequence(current_pose, self.gui_target)
+        if not motion_sequence:
+            return
+
         self.stop_jog(force=True)
-        target = self.gui_target
-        success = self.send_pose_goal(target)
+        success = True
+        for step_index, step_target in enumerate(motion_sequence, start=1):
+            self.get_logger().info(
+                f"Sending target step {step_index}/{len(motion_sequence)}"
+            )
+            success = self.send_pose_goal(step_target)
+            if not success:
+                break
         if success:
             self.gui_target = None
             self.gui_target_current_pose = None
             self.gui_target_summary_lines = [
-                "target move: done; inspect live image",
+                f"target move: done in {len(motion_sequence)} step(s); inspect live image",
                 "press c to save sample, or n to propose another target",
             ]
         else:
@@ -647,6 +1027,55 @@ class SemiAutoHandeyeSession(Node):
 
     def gui_target_is_safe(self):
         return self.target_is_safe(self.gui_target_current_pose, self.gui_target)
+
+    def plan_target_motion_sequence(self, T_base_tcp_current, T_base_tcp_target):
+        if T_base_tcp_current is None:
+            return None
+        if not bool(self.get_parameter("split_target_motion").value):
+            return [T_base_tcp_target] if self.target_is_safe(T_base_tcp_current, T_base_tcp_target) else None
+
+        sequence = []
+        translation_target = T_base_tcp_current.copy()
+        translation_target[:3, 3] = T_base_tcp_target[:3, 3]
+        if np.linalg.norm(translation_target[:3, 3] - T_base_tcp_current[:3, 3]) > 1.0e-6:
+            sequence.append(translation_target)
+
+        max_rotation = float(self.get_parameter("target_max_rotation_deg").value)
+        step_limit = float(self.get_parameter("split_rotation_step_deg").value)
+        step_limit = max(1.0, min(step_limit, max_rotation))
+        R_delta = translation_target[:3, :3].T @ T_base_tcp_target[:3, :3]
+        rotation_deg = rotation_angle_deg(R_delta)
+        if rotation_deg > 0.1:
+            rotation_steps = max(1, int(math.ceil(rotation_deg / step_limit)))
+            for step in range(1, rotation_steps + 1):
+                fraction = step / float(rotation_steps)
+                step_target = T_base_tcp_target.copy()
+                step_target[:3, :3] = interpolate_rotation(
+                    translation_target[:3, :3],
+                    T_base_tcp_target[:3, :3],
+                    fraction,
+                )
+                sequence.append(step_target)
+        elif not sequence:
+            sequence.append(T_base_tcp_target)
+
+        checked_sequence = []
+        previous = T_base_tcp_current
+        for step_target in sequence:
+            if not self.target_is_safe(previous, step_target):
+                self.get_logger().warn(
+                    "Split target step is still too large; refusing motion. "
+                    "Try jogging closer or lowering split_rotation_step_deg."
+                )
+                return None
+            checked_sequence.append(step_target)
+            previous = step_target
+        if len(checked_sequence) > 1:
+            self.get_logger().info(
+                "Split target motion: translate first, then rotate in "
+                f"{len(checked_sequence) - 1} step(s)."
+            )
+        return checked_sequence
 
     def target_is_safe(self, T_base_tcp_current, T_base_tcp_target):
         metrics = self.target_motion_metrics(T_base_tcp_current, T_base_tcp_target)
@@ -873,7 +1302,7 @@ class SemiAutoHandeyeSession(Node):
         else:
             cv2.imwrite(
                 annotated_path,
-                self.detector.draw_detection(
+                self.annotated_detection_image(
                     image,
                     frame["detection"],
                     frame["camera_matrix"],
@@ -896,6 +1325,8 @@ class SemiAutoHandeyeSession(Node):
     def draw_text_lines(self, image, lines):
         y = 28
         for line in lines:
+            if not line:
+                continue
             cv2.putText(
                 image,
                 line,
@@ -1161,6 +1592,7 @@ class SemiAutoHandeyeSession(Node):
         yaw_span = math.radians(float(self.get_parameter("sphere_yaw_span_deg").value))
         pitch_span = math.radians(float(self.get_parameter("sphere_pitch_span_deg").value))
         sample_count = max(1, int(self.get_parameter("samples").value))
+        roll_reference = self.camera_roll_reference()
 
         candidates = []
         rings = [
@@ -1189,7 +1621,10 @@ class SemiAutoHandeyeSession(Node):
                 board_center,
                 reference_rotation=current_camera_rotation,
                 look_axis=self.camera_look_axis_value,
+                roll_reference=roll_reference,
             )
+            if not self.camera_target_within_start_height(T_base_camera):
+                continue
             T_base_tcp = T_base_camera @ np.linalg.inv(self.T_tcp_camera)
             candidates.append(T_base_tcp)
 
@@ -1209,6 +1644,7 @@ class SemiAutoHandeyeSession(Node):
         polar_span = float(np.clip(polar_span, math.radians(1.0), math.radians(85.0)))
         turns = max(0.25, float(self.get_parameter("sphere_spiral_turns").value))
         candidate_count = max(sample_count * 4, 72)
+        roll_reference = self.camera_roll_reference()
 
         candidates = []
         for index in range(candidate_count):
@@ -1232,9 +1668,20 @@ class SemiAutoHandeyeSession(Node):
                 board_center,
                 reference_rotation=current_camera_rotation,
                 look_axis=self.camera_look_axis_value,
+                roll_reference=roll_reference,
             )
+            if not self.camera_target_within_start_height(T_base_camera):
+                continue
             candidates.append(T_base_camera @ np.linalg.inv(self.T_tcp_camera))
         return candidates
+
+    def camera_target_within_start_height(self, T_base_camera):
+        if self.sphere_start_camera_z is None:
+            return True
+        max_above = float(
+            self.get_parameter("target_max_camera_z_above_start_m").value
+        )
+        return float(T_base_camera[2, 3]) <= self.sphere_start_camera_z + max_above
 
     def initialize_spiral_frame(self, current_camera, board_center, current_camera_rotation):
         zenith = self.spiral_zenith_direction(current_camera, board_center)
@@ -1254,17 +1701,20 @@ class SemiAutoHandeyeSession(Node):
         self.sphere_zenith_direction = zenith
         self.sphere_tangent_x = tangent_x
         self.sphere_tangent_y = tangent_y
+        self.sphere_start_camera_z = float(current_camera[2])
         self.get_logger().info(
             "Initialized spiral hemisphere frame: "
             f"zenith={np.round(zenith, 4).tolist()}, "
             f"tangent_x={np.round(tangent_x, 4).tolist()}, "
-            f"tangent_y={np.round(tangent_y, 4).tolist()}"
+            f"tangent_y={np.round(tangent_y, 4).tolist()}, "
+            f"start_camera_z={self.sphere_start_camera_z:.4f}"
         )
 
     def reset_spiral_frame(self):
         self.sphere_zenith_direction = None
         self.sphere_tangent_x = None
         self.sphere_tangent_y = None
+        self.sphere_start_camera_z = None
 
     def spiral_zenith_direction(self, current_camera, board_center):
         source = str(self.get_parameter("hemisphere_axis_source").value).lower()
@@ -1295,6 +1745,7 @@ class SemiAutoHandeyeSession(Node):
             max_tcp_delta = float(self.get_parameter("target_max_tcp_delta_m").value)
             max_camera_delta = float(self.get_parameter("target_max_camera_delta_m").value)
             max_rotation = float(self.get_parameter("target_max_rotation_deg").value)
+            split_motion = bool(self.get_parameter("split_target_motion").value)
             for target in targets:
                 target_position = target[:3, 3]
                 metrics = self.target_motion_metrics(current_pose, target)
@@ -1304,7 +1755,7 @@ class SemiAutoHandeyeSession(Node):
                     continue
                 if metrics["camera_delta_norm"] > max_camera_delta:
                     continue
-                if metrics["tcp_rotation_deg"] > max_rotation:
+                if not split_motion and metrics["tcp_rotation_deg"] > max_rotation:
                     continue
                 if np.linalg.norm(target_position - current_position) < 0.015:
                     continue
@@ -1369,7 +1820,7 @@ class SemiAutoHandeyeSession(Node):
         cv2.imwrite(raw_path, image)
         cv2.imwrite(
             annotated_path,
-            self.detector.draw_detection(
+            self.annotated_detection_image(
                 image,
                 detection,
                 observation["camera_matrix"],
@@ -1571,6 +2022,51 @@ class SemiAutoHandeyeSession(Node):
         )
         return "plus_z"
 
+    def normalize_camera_roll_reference(self, value):
+        normalized = str(value).strip().lower().replace("-", "_")
+        aliases = {
+            "negative_board_x_to_camera_x": "minus_board_x_to_camera_x",
+            "negative_board_y_to_camera_y": "minus_board_y_to_camera_y",
+        }
+        normalized = aliases.get(normalized, normalized)
+        allowed = self.camera_roll_reference_options()
+        if normalized in allowed:
+            return normalized
+        self.get_logger().warn(
+            f"Unknown camera_roll_reference '{value}', using board_x_to_camera_x."
+        )
+        return "board_x_to_camera_x"
+
+    def camera_roll_reference_options(self):
+        return [
+            "board_x_to_camera_x",
+            "minus_board_x_to_camera_x",
+            "board_y_to_camera_y",
+            "minus_board_y_to_camera_y",
+            "current",
+        ]
+
+    def camera_roll_reference(self):
+        if self.T_base_board is None:
+            return None
+
+        normalized = self.camera_roll_reference_value
+        board_x = normalize(self.T_base_board[:3, 0])
+        board_y = normalize(self.T_base_board[:3, 1])
+
+        references = {
+            "board_x_to_camera_x": (board_x, "x"),
+            "minus_board_x_to_camera_x": (-board_x, "x"),
+            "board_y_to_camera_y": (board_y, "y"),
+            "minus_board_y_to_camera_y": (-board_y, "y"),
+            "none": None,
+            "current": None,
+        }
+        if normalized in references:
+            return references[normalized]
+
+        return references["board_x_to_camera_x"]
+
     def toggle_camera_look_axis(self):
         self.camera_look_axis_value = (
             "minus_z" if self.camera_look_axis_value == "plus_z" else "plus_z"
@@ -1584,6 +2080,24 @@ class SemiAutoHandeyeSession(Node):
         self.get_logger().warn(
             "Camera look axis toggled to "
             f"{self.camera_look_axis_value}. Press n to generate a fresh target."
+        )
+
+    def toggle_camera_roll_reference(self):
+        options = self.camera_roll_reference_options()
+        try:
+            index = options.index(self.camera_roll_reference_value)
+        except ValueError:
+            index = -1
+        self.camera_roll_reference_value = options[(index + 1) % len(options)]
+        self.gui_target = None
+        self.gui_target_current_pose = None
+        self.gui_target_summary_lines = [
+            f"roll ref: {self.camera_roll_reference_value}; press n to recompute target",
+            "target move: no active target after roll-reference toggle",
+        ]
+        self.get_logger().warn(
+            "Camera roll reference toggled to "
+            f"{self.camera_roll_reference_value}. Press n to generate a fresh target."
         )
 
     def camera_forward_vector(self, T_base_camera):
@@ -1624,6 +2138,7 @@ class SemiAutoHandeyeSession(Node):
             "distance_to_board_center": float(distance),
             "look_angle_deg": math.degrees(math.acos(look_cos)),
             "camera_look_axis": self.camera_look_axis_value,
+            "camera_roll_reference": self.camera_roll_reference_value,
         }
 
     def print_target(self, index, total, T_base_tcp_current, T_base_tcp_target):
@@ -1663,6 +2178,7 @@ class SemiAutoHandeyeSession(Node):
             f"x={camera_p[0]: .4f} y={camera_p[1]: .4f} z={camera_p[2]: .4f} "
             f"distance_to_board_center={metrics['distance_to_board_center']:.4f} m "
             f"look_axis={metrics['camera_look_axis']} "
+            f"roll_ref={metrics['camera_roll_reference']} "
             f"look_angle={metrics['look_angle_deg']:.2f} deg"
         )
         print(
@@ -1750,11 +2266,22 @@ def rotation_angle_deg(R):
     return math.degrees(math.acos(cos_angle))
 
 
+def interpolate_rotation(R_start, R_target, fraction):
+    fraction = float(np.clip(fraction, 0.0, 1.0))
+    R_start = np.asarray(R_start, dtype=np.float64)
+    R_target = np.asarray(R_target, dtype=np.float64)
+    R_delta = R_start.T @ R_target
+    rvec, _ = cv2.Rodrigues(R_delta)
+    R_step, _ = cv2.Rodrigues(rvec * fraction)
+    return R_start @ R_step
+
+
 def look_at_camera_pose(
     camera_position,
     target_position,
     reference_rotation=None,
     look_axis="plus_z",
+    roll_reference=None,
 ):
     camera_position = np.asarray(camera_position, dtype=np.float64)
     target_position = np.asarray(target_position, dtype=np.float64)
@@ -1762,6 +2289,20 @@ def look_at_camera_pose(
     z_axis = -forward_axis if look_axis == "minus_z" else forward_axis
 
     candidates = []
+    if roll_reference is not None:
+        reference_axis, camera_axis_name = roll_reference
+        reference_axis = np.asarray(reference_axis, dtype=np.float64)
+        projected = reference_axis - z_axis * np.dot(reference_axis, z_axis)
+        if np.linalg.norm(projected) > 1.0e-6:
+            if camera_axis_name == "y":
+                y_axis = normalize(projected)
+                x_axis = normalize(np.cross(y_axis, z_axis))
+                y_axis = normalize(np.cross(z_axis, x_axis))
+            else:
+                x_axis = normalize(projected)
+                y_axis = normalize(np.cross(z_axis, x_axis))
+            candidates.append(rotation_from_axes(x_axis, y_axis, z_axis))
+
     if reference_rotation is not None:
         reference_rotation = np.asarray(reference_rotation, dtype=np.float64)
         for reference_axis, axis_name in (
@@ -1802,6 +2343,8 @@ def look_at_camera_pose(
         )
 
     if reference_rotation is None:
+        R = candidates[0]
+    elif roll_reference is not None:
         R = candidates[0]
     else:
         R = min(

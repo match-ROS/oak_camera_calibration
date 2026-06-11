@@ -169,16 +169,24 @@ The launch defaults are for the OAK mounted on the right arm:
 - `keyboard_jog_enabled:=false`
 - `dictionary:=DICT_4X4_250`
 - `board_id_order:=column_major`
+- `squares_x:=6`
+- `squares_y:=9`
 - `square_length_m:=0.065`
 - `marker_length_m:=0.048`
 - `use_camera_tf_initial_guess:=true`
 - `camera_look_axis:=plus_z`
+- `camera_roll_reference:=current`
+- `target_max_camera_z_above_start_m:=0.01`
 - `max_linear_velocity:=0.025`
 - `max_angular_velocity:=0.10`
 - `target_max_tcp_delta_m:=0.25`
 - `target_max_camera_delta_m:=0.30`
 - `target_min_camera_delta_m:=0.04`
 - `target_max_rotation_deg:=35.0`
+- `split_target_motion:=true`
+- `split_rotation_step_deg:=25.0`
+- `center_camera_xy_only:=true`
+- `draw_board_center_overlay:=true`
 - `target_pattern:=spiral_hemisphere`
 - `hemisphere_axis_source:=board_normal`
 - `samples:=18`
@@ -188,8 +196,8 @@ The launch defaults are for the OAK mounted on the right arm:
 The session estimates the board pose from the first usable view, generates a
 3D spiral on a hemisphere around the board center, and writes the same
 `sample_*.json` files used by `compute_handeye`. By default it writes to
-`~/oak_charuco_column_major_handeye_samples` so older samples captured with the
-wrong OpenCV row-major board model are not mixed into the solve.
+`~/oak_charuco_6x9_column_major_handeye_samples` so older samples captured with
+the previous wrong board geometry are not mixed into the solve.
 
 If the camera driver is already running, keep it running and start only the
 session:
@@ -204,20 +212,49 @@ When the generated poses look plausible, enable automatic J-PARSE motion:
 ros2 launch oak_camera_calibration mur620_oak_handeye.launch.py move_enabled:=true
 ```
 
+With `split_target_motion:=true`, automatic target moves first drive to the
+new TCP position while keeping the current orientation, then rotate toward the
+final target in smaller `split_rotation_step_deg` increments.
+
+The initial camera pose is treated as the top of the hemisphere. Proposed
+camera targets are filtered so they do not move more than
+`target_max_camera_z_above_start_m` above that start height.
+
+The `z` GUI action computes the lateral offset between the optical axis and the
+estimated board center, keeps the current camera orientation and height, and
+moves only in base XY by default. Set `center_camera_xy_only:=false` to allow
+the full image-plane correction.
+
 If a proposed target moves to a plausible position but rotates the camera away
 from the board, press `v` in the GUI and then `n` to regenerate the target. If
 that fixes the sign, restart with `camera_look_axis:=minus_z`.
+
+The target orientation keeps the selected optical axis pointed at the board
+center and uses `camera_roll_reference` to choose the roll around that view
+axis. The default `current` keeps the current/start image roll, which is useful
+for the wide OAK image sensor. Useful alternatives are
+`board_x_to_camera_x`, `minus_board_x_to_camera_x`, `board_y_to_camera_y`, and
+`minus_board_y_to_camera_y`.
 
 In the GUI, use:
 
 - `n`: propose the next sphere target and show TCP/camera deltas
 - `g`: send the shown target to J-PARSE if `move_enabled:=true`
+- `z`: center the current camera view over the board center with lateral motion
+- `p`: point the current camera orientation at the board center without translating
 - `b`: move back to the first valid TCP pose captured after session start
 - `c`: save the current sample
 - `v`: flip the camera look axis for target generation, then press `n` again
+- `r`: cycle the camera roll reference, then press `n` again
 - manual Cartesian jog is handled by the separate `mur620 robot jog` window
 - `m`: toggle translation/rotation jog mode
 - `q` or `Esc`: close the GUI
+
+When a ChArUco pose is available, the live image overlays board geometry:
+magenta marks the board center, blue marks the board origin, cyan marks the
+image center, orange marks the assumed full board outline, green marks the
+inner ChArUco-corner area, and the yellow line shows the pixel offset to
+center.
 
 In the separate jog GUI, hold the on-screen buttons to jog the robot. Keyboard
 fallbacks are arrow keys for XY, `PgUp`/`PgDn` for Z, `m` to toggle rotation
@@ -234,5 +271,5 @@ The saved ChArUco samples can be solved explicitly with:
 
 ```bash
 ros2 run oak_camera_calibration compute_handeye \
-  --samples-dir ~/oak_charuco_column_major_handeye_samples
+  --samples-dir ~/oak_charuco_6x9_column_major_handeye_samples
 ```

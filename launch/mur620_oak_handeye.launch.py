@@ -61,6 +61,9 @@ def generate_launch_description():
                 "log_key_codes": LaunchConfiguration("log_key_codes"),
                 "display_max_side": LaunchConfiguration("display_max_side"),
                 "draw_rejected_markers": LaunchConfiguration("draw_rejected_markers"),
+                "draw_board_center_overlay": LaunchConfiguration(
+                    "draw_board_center_overlay"
+                ),
                 "samples": LaunchConfiguration("samples"),
                 "sphere_radius_m": LaunchConfiguration("sphere_radius_m"),
                 "sphere_yaw_span_deg": LaunchConfiguration("sphere_yaw_span_deg"),
@@ -76,6 +79,9 @@ def generate_launch_description():
                 "target_max_camera_delta_m": LaunchConfiguration("target_max_camera_delta_m"),
                 "target_min_camera_delta_m": LaunchConfiguration("target_min_camera_delta_m"),
                 "target_max_rotation_deg": LaunchConfiguration("target_max_rotation_deg"),
+                "split_target_motion": LaunchConfiguration("split_target_motion"),
+                "split_rotation_step_deg": LaunchConfiguration("split_rotation_step_deg"),
+                "center_camera_xy_only": LaunchConfiguration("center_camera_xy_only"),
                 "use_camera_tf_initial_guess": LaunchConfiguration(
                     "use_camera_tf_initial_guess"
                 ),
@@ -84,6 +90,10 @@ def generate_launch_description():
                     "require_tcp_camera_estimate_for_targets"
                 ),
                 "camera_look_axis": LaunchConfiguration("camera_look_axis"),
+                "camera_roll_reference": LaunchConfiguration("camera_roll_reference"),
+                "target_max_camera_z_above_start_m": LaunchConfiguration(
+                    "target_max_camera_z_above_start_m"
+                ),
                 "handeye_method": LaunchConfiguration("handeye_method"),
                 "handeye_min_samples": LaunchConfiguration("handeye_min_samples"),
                 "handeye_max_residual_translation_m": LaunchConfiguration(
@@ -148,7 +158,7 @@ def generate_launch_description():
             DeclareLaunchArgument("camera_info_topic", default_value="/oak/rgb/camera_info"),
             DeclareLaunchArgument(
                 "output_dir",
-                default_value="~/oak_charuco_column_major_handeye_samples",
+                default_value="~/oak_charuco_6x9_column_major_handeye_samples",
             ),
             DeclareLaunchArgument("sample_prefix", default_value="sample"),
             DeclareLaunchArgument("robot_base_frame", default_value="mur620/UR10_r/base_link"),
@@ -186,6 +196,7 @@ def generate_launch_description():
             DeclareLaunchArgument("log_key_codes", default_value="true"),
             DeclareLaunchArgument("display_max_side", default_value="1600"),
             DeclareLaunchArgument("draw_rejected_markers", default_value="true"),
+            DeclareLaunchArgument("draw_board_center_overlay", default_value="true"),
             DeclareLaunchArgument("samples", default_value="18"),
             DeclareLaunchArgument("sphere_radius_m", default_value="0.0"),
             DeclareLaunchArgument("sphere_yaw_span_deg", default_value="30.0"),
@@ -201,16 +212,21 @@ def generate_launch_description():
             DeclareLaunchArgument("target_max_camera_delta_m", default_value="0.30"),
             DeclareLaunchArgument("target_min_camera_delta_m", default_value="0.04"),
             DeclareLaunchArgument("target_max_rotation_deg", default_value="35.0"),
+            DeclareLaunchArgument("split_target_motion", default_value="true"),
+            DeclareLaunchArgument("split_rotation_step_deg", default_value="25.0"),
+            DeclareLaunchArgument("center_camera_xy_only", default_value="true"),
             DeclareLaunchArgument("use_camera_tf_initial_guess", default_value="true"),
             DeclareLaunchArgument("load_session_state", default_value="true"),
             DeclareLaunchArgument("require_tcp_camera_estimate_for_targets", default_value="true"),
             DeclareLaunchArgument("camera_look_axis", default_value="plus_z"),
+            DeclareLaunchArgument("camera_roll_reference", default_value="current"),
+            DeclareLaunchArgument("target_max_camera_z_above_start_m", default_value="0.01"),
             DeclareLaunchArgument("handeye_method", default_value="tsai"),
             DeclareLaunchArgument("handeye_min_samples", default_value="4"),
             DeclareLaunchArgument("handeye_max_residual_translation_m", default_value="0.05"),
             DeclareLaunchArgument("handeye_max_residual_rotation_deg", default_value="10.0"),
             DeclareLaunchArgument("handeye_max_tcp_camera_translation_m", default_value="0.75"),
-            DeclareLaunchArgument("squares_x", default_value="14"),
+            DeclareLaunchArgument("squares_x", default_value="6"),
             DeclareLaunchArgument("squares_y", default_value="9"),
             DeclareLaunchArgument("square_length_m", default_value="0.065"),
             DeclareLaunchArgument("marker_length_m", default_value="0.048"),

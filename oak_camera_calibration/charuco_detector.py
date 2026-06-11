@@ -236,7 +236,17 @@ class CharucoDetector:
         roi = detection.get("roi")
         if roi is not None:
             x, y, w, h = roi
-            cv2.rectangle(view, (x, y), (x + w, y + h), (0, 180, 255), 3)
+            cv2.rectangle(view, (x, y), (x + w, y + h), (180, 180, 180), 2)
+            cv2.putText(
+                view,
+                "detector ROI",
+                (x + 8, y + 28),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                (180, 180, 180),
+                2,
+                cv2.LINE_AA,
+            )
 
         return view
 
