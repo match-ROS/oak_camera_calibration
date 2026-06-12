@@ -33,6 +33,11 @@ ros2 launch oak_camera_calibration oak4_pro_af_4k.launch.py
 ```
 
 This uses `config/oak4_pro_af_4k.yaml` and requests a 3840x2160 RGB stream.
+It also publishes the calibrated camera TF from `mur620/UR10_r/tool0` to the
+DepthAI `oak` base frame. The direct hand-eye result is documented in
+`config/mur620_ur10_r_oak_handeye.yaml` as
+`mur620/UR10_r/tool0 -> oak_rgb_camera_optical_frame`; the launch defaults are
+the equivalent `tool0 -> oak` parameters expected by the DepthAI driver.
 The higher-resolution profile is also available:
 
 ```bash
@@ -159,6 +164,15 @@ ros2 launch oak_camera_calibration mur620_oak_handeye.launch.py
 The launch defaults are for the OAK mounted on the right arm:
 
 - `arm:=r`
+- `camera_launch_file:=oak4_pro_af_4k.launch.py`
+- `camera_parent_frame:=mur620/UR10_r/tool0`
+- calibrated camera driver TF:
+  `camera_cam_pos_x:=0.0068564203`,
+  `camera_cam_pos_y:=-0.0892312561`,
+  `camera_cam_pos_z:=0.1018930213`,
+  `camera_cam_roll:=-3.0221294847`,
+  `camera_cam_pitch:=-1.5221462887`,
+  `camera_cam_yaw:=-1.7026932502`
 - `robot_base_frame:=mur620/UR10_r/base_link`
 - `robot_tcp_frame:=mur620/UR10_r/tool0`
 - `action_name:=/mur620/jparse_move_r`

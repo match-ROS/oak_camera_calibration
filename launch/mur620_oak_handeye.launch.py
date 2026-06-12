@@ -13,6 +13,12 @@ def generate_launch_description():
     launch_camera = LaunchConfiguration("launch_camera")
     camera_launch_file = LaunchConfiguration("camera_launch_file")
     camera_parent_frame = LaunchConfiguration("camera_parent_frame")
+    camera_cam_pos_x = LaunchConfiguration("camera_cam_pos_x")
+    camera_cam_pos_y = LaunchConfiguration("camera_cam_pos_y")
+    camera_cam_pos_z = LaunchConfiguration("camera_cam_pos_z")
+    camera_cam_roll = LaunchConfiguration("camera_cam_roll")
+    camera_cam_pitch = LaunchConfiguration("camera_cam_pitch")
+    camera_cam_yaw = LaunchConfiguration("camera_cam_yaw")
 
     camera_driver = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -27,6 +33,12 @@ def generate_launch_description():
         condition=IfCondition(launch_camera),
         launch_arguments={
             "parent_frame": camera_parent_frame,
+            "cam_pos_x": camera_cam_pos_x,
+            "cam_pos_y": camera_cam_pos_y,
+            "cam_pos_z": camera_cam_pos_z,
+            "cam_roll": camera_cam_roll,
+            "cam_pitch": camera_cam_pitch,
+            "cam_yaw": camera_cam_yaw,
         }.items(),
     )
 
@@ -154,6 +166,12 @@ def generate_launch_description():
             DeclareLaunchArgument("launch_camera", default_value="true"),
             DeclareLaunchArgument("camera_launch_file", default_value="oak4_pro_af_4k.launch.py"),
             DeclareLaunchArgument("camera_parent_frame", default_value="mur620/UR10_r/tool0"),
+            DeclareLaunchArgument("camera_cam_pos_x", default_value="0.0068564203"),
+            DeclareLaunchArgument("camera_cam_pos_y", default_value="-0.0892312561"),
+            DeclareLaunchArgument("camera_cam_pos_z", default_value="0.1018930213"),
+            DeclareLaunchArgument("camera_cam_roll", default_value="-3.0221294847"),
+            DeclareLaunchArgument("camera_cam_pitch", default_value="-1.5221462887"),
+            DeclareLaunchArgument("camera_cam_yaw", default_value="-1.7026932502"),
             DeclareLaunchArgument("image_topic", default_value="/oak/rgb/image_raw"),
             DeclareLaunchArgument("camera_info_topic", default_value="/oak/rgb/camera_info"),
             DeclareLaunchArgument(

@@ -1,0 +1,48 @@
+# Hand-eye calibration for the OAK 4 Pro AF mounted on mur620 right UR10.
+# Captured with a 6x9 ChArUco board, 65 mm squares, 48 mm markers,
+# DICT_4X4_250, column-major board ID order.
+#
+# The direct calibration is tool0 -> oak_rgb_camera_optical_frame.  The
+# DepthAI driver parameters below are converted to tool0 -> oak because the
+# driver publishes its own fixed oak -> oak_rgb_camera_optical_frame transform.
+
+parent_frame: mur620/UR10_r/tool0
+camera_base_frame: oak
+camera_optical_frame: oak_rgb_camera_optical_frame
+source_samples_dir: /home/rosmatch/oak_charuco_6x9_column_major_handeye_samples
+sample_count: 21
+method: tsai
+
+tcp_to_rgb_optical:
+  translation_m:
+    x: 0.0068564203
+    y: -0.0892312561
+    z: 0.1018930213
+  quaternion_xyzw:
+    x: 0.0241307793
+    y: -0.0030488269
+    z: -0.0062149980
+    w: 0.9996848423
+  rotation_matrix:
+    - [0.9999041569, 0.0122789375, -0.0063956776]
+    - [-0.0125732198, 0.9987581586, -0.0482084517]
+    - [0.0057957867, 0.0482842455, 0.9988168203]
+
+depthai_driver_tcp_to_oak:
+  cam_pos_x: 0.0068564203
+  cam_pos_y: -0.0892312561
+  cam_pos_z: 0.1018930213
+  cam_roll: -3.0221294847
+  cam_pitch: -1.5221462887
+  cam_yaw: -1.7026932502
+  quaternion_xyzw:
+    x: 0.5072758983
+    y: -0.5165397233
+    z: 0.4861939460
+    w: 0.4893601170
+
+residual_summary:
+  worst_mean_translation_m: 0.00989
+  worst_max_translation_m: 0.01342
+  worst_mean_rotation_deg: 0.544
+  worst_max_rotation_deg: 0.795
