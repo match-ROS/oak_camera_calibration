@@ -282,8 +282,13 @@ class OakCameraModule(MurGuiModule):
         context.add_status_row("OAK", self.status_label)
         context.append_log("[gui] OAK camera module loaded.")
 
-    def _run_local(self, name, command, on_finished=None):
-        self.context.start_process(name, setup_prefix() + command, on_finished=on_finished)
+    def _run_local(self, name, command, on_finished=None, env=None):
+        self.context.start_process(
+            name,
+            setup_prefix() + command,
+            env=env,
+            on_finished=on_finished,
+        )
 
     def _param_command(self, assignments):
         commands = []
@@ -310,7 +315,11 @@ class OakCameraModule(MurGuiModule):
     def start_driver(self):
         command = "exec ros2 launch oak_camera_calibration oak4_pro_af_gui.launch.py"
         self.context.append_log("[gui] Starting OAK4-D driver with GUI preview profile")
-        self._run_local("oak_driver", command)
+        self._run_local(
+            "oak_driver",
+            command,
+            env={"FASTDDS_BUILTIN_TRANSPORTS": "UDPv4"},
+        )
 
     def stop_driver(self):
         self.stop_live_view()
