@@ -23,6 +23,7 @@ setup(
         "console_scripts": [
             "capture_oak_snapshot = oak_camera_calibration.capture_oak_snapshot:main",
             "compute_handeye = oak_camera_calibration.compute_handeye:main",
+            "oak_camera_gui = oak_camera_calibration.oak_camera_gui:main",
             "oak_sample_gui = oak_camera_calibration.oak_sample_gui:main",
             "robot_jog_gui = oak_camera_calibration.robot_jog_gui:main",
             "semi_auto_handeye_session = oak_camera_calibration.semi_auto_handeye_session:main",
