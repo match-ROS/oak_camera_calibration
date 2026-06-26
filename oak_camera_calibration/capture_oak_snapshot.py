@@ -10,7 +10,7 @@ import yaml
 from cv_bridge import CvBridge
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import CameraInfo, Image
+from sensor_msgs.msg import CameraInfo, CompressedImage, Image
 
 
 class OakSnapshot(Node):
@@ -18,6 +18,7 @@ class OakSnapshot(Node):
         super().__init__("oak_snapshot")
 
         self.declare_parameter("image_topic", "/oak/rgb/image_raw")
+        self.declare_parameter("image_compressed", False)
         self.declare_parameter("camera_info_topic", "/oak/rgb/camera_info")
         self.declare_parameter("output_dir", "~/oak_handeye_samples")
         self.declare_parameter("prefix", "oak")
@@ -40,12 +41,15 @@ class OakSnapshot(Node):
         qos.reliability = ReliabilityPolicy.BEST_EFFORT
 
         image_topic = self.get_parameter("image_topic").value
+        self.image_compressed = bool(self.get_parameter("image_compressed").value) or image_topic.endswith("/compressed")
         camera_info_topic = self.get_parameter("camera_info_topic").value
 
-        self.create_subscription(Image, image_topic, self._on_image, qos)
+        image_msg_type = CompressedImage if self.image_compressed else Image
+        self.create_subscription(image_msg_type, image_topic, self._on_image, qos)
         self.create_subscription(CameraInfo, camera_info_topic, self._on_camera_info, qos)
 
-        self.get_logger().info(f"Waiting for image on {image_topic}")
+        transport = "compressed" if self.image_compressed else "raw"
+        self.get_logger().info(f"Waiting for {transport} image on {image_topic}")
         self.get_logger().info(f"Waiting for CameraInfo on {camera_info_topic}")
 
     def _on_image(self, msg):
@@ -55,7 +59,10 @@ class OakSnapshot(Node):
         if self.frame_count <= warmup_frames:
             return
 
-        image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+        if self.image_compressed:
+            image = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding="bgr8")
+        else:
+            image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         metrics = self._image_metrics(image)
 
         min_mean_intensity = float(self.get_parameter("min_mean_intensity").value)

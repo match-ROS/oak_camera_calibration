@@ -272,11 +272,11 @@ class OakCameraModule(MurGuiModule):
 
     def setup_ui(self, context):
         self.context = context
-        context.add_action_button("Start OAK", self.start_driver)
-        context.add_action_button("Stop OAK", self.stop_driver)
-        context.add_action_button("OAK Live", self.open_controls)
-        context.add_tool_button("OAK Snapshot", self.capture_snapshot)
-        context.add_tool_button("OAK Sample GUI", self.open_sample_gui)
+        context.add_action_button("Start OAK", self.start_driver, section="OAK")
+        context.add_action_button("Stop OAK", self.stop_driver, section="OAK")
+        context.add_action_button("OAK Live", self.open_controls, section="OAK")
+        context.add_tool_button("OAK Snapshot", self.capture_snapshot, section="OAK")
+        context.add_tool_button("OAK Sample GUI", self.open_sample_gui, section="OAK")
         self.status_label = QtWidgets.QLabel("idle")
         self.status_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         context.add_status_row("OAK", self.status_label)
@@ -383,7 +383,8 @@ class OakCameraModule(MurGuiModule):
         os.makedirs(DEFAULT_OUTPUT_DIR, exist_ok=True)
         command = (
             "exec ros2 run oak_camera_calibration capture_oak_snapshot --ros-args "
-            + f"-p image_topic:={DEFAULT_RAW_TOPIC} "
+            + f"-p image_topic:={DEFAULT_COMPRESSED_TOPIC} "
+            + "-p image_compressed:=true "
             + "-p camera_info_topic:=/oak/rgb/camera_info "
             + f"-p output_dir:={shlex.quote(DEFAULT_OUTPUT_DIR)} "
             + "-p prefix:=oak_gui"
