@@ -1,5 +1,6 @@
 """OAK camera extension module for the shared MuR GUI."""
 
+import json
 import os
 import shlex
 import threading
@@ -22,6 +23,31 @@ OAK_RGB_PREFIX = "rgb"
 DEFAULT_COMPRESSED_TOPIC = "/oak/rgb/image_raw/compressed"
 DEFAULT_RAW_TOPIC = "/oak/rgb/image_raw"
 DEFAULT_OUTPUT_DIR = os.path.join(WS, "src", "oak_camera_calibration", "logs", "snapshots")
+OAK_LOG_DIR = os.path.join(WS, "src", "oak_camera_calibration", "logs")
+OAK_SETTINGS_FILE = os.path.join(OAK_LOG_DIR, "oak_gui_settings.json")
+OAK_GENERATED_PARAMS_FILE = os.path.join(OAK_LOG_DIR, "oak_gui_driver_params.yaml")
+
+OAK_RESOLUTION_PRESETS = [
+    ("1280 x 720 @ 15 Hz", 1280, 720, 15.0),
+    ("1920 x 1080 @ 15 Hz", 1920, 1080, 15.0),
+    ("3840 x 2160 @ 5 Hz", 3840, 2160, 5.0),
+    ("8000 x 6000 @ 5 Hz", 8000, 6000, 5.0),
+    ("Custom", None, None, None),
+]
+OAK_RGBD_MAX_WIDTH = 1920
+OAK_RGBD_MAX_HEIGHT = 1080
+OAK_RGBD_MAX_FPS = 15.0
+
+DEFAULT_OAK_SETTINGS = {
+    "profile": "rgb",
+    "width": 1920,
+    "height": 1080,
+    "fps": 15.0,
+    "compressed": True,
+    "low_bandwidth": True,
+    "quality": 75,
+    "parent_frame": "mur620d/UR10_r/tool0",
+}
 
 
 class OakLiveViewBridge(QtCore.QThread):
@@ -113,6 +139,184 @@ class OakLiveViewBridge(QtCore.QThread):
         stamp = msg.header.stamp
         label = f"{self.topic}  {width}x{height}  t={stamp.sec}.{stamp.nanosec:09d}"
         self.frame.emit(qimage, label)
+
+
+class OakSettingsDialog(QtWidgets.QDialog):
+    def __init__(self, module, parent=None):
+        super().__init__(parent)
+        self.module = module
+        self.setWindowTitle("OAK Settings")
+        self.setMinimumWidth(520)
+
+        layout = QtWidgets.QVBoxLayout(self)
+
+        driver_box = QtWidgets.QGroupBox("Driver")
+        form = QtWidgets.QFormLayout(driver_box)
+        self.profile_combo = QtWidgets.QComboBox()
+        self.profile_combo.addItem("RGB preview", "rgb")
+        self.profile_combo.addItem("RGBD + PointCloud", "rgbd")
+        self.resolution_combo = QtWidgets.QComboBox()
+        for label, width, height, fps in OAK_RESOLUTION_PRESETS:
+            self.resolution_combo.addItem(label, (width, height, fps))
+        self.width_spin = QtWidgets.QSpinBox()
+        self.width_spin.setRange(320, 8000)
+        self.width_spin.setSingleStep(160)
+        self.height_spin = QtWidgets.QSpinBox()
+        self.height_spin.setRange(240, 6000)
+        self.height_spin.setSingleStep(120)
+        self.fps_spin = QtWidgets.QDoubleSpinBox()
+        self.fps_spin.setRange(1.0, 60.0)
+        self.fps_spin.setSingleStep(1.0)
+        self.fps_spin.setDecimals(1)
+        self.compressed_check = QtWidgets.QCheckBox("Publish compressed RGB")
+        self.low_bandwidth_check = QtWidgets.QCheckBox("Low bandwidth")
+        self.quality_spin = QtWidgets.QSpinBox()
+        self.quality_spin.setRange(1, 100)
+        self.quality_spin.setSingleStep(5)
+        self.parent_frame_edit = QtWidgets.QLineEdit()
+
+        size_row = QtWidgets.QWidget()
+        size_layout = QtWidgets.QHBoxLayout(size_row)
+        size_layout.setContentsMargins(0, 0, 0, 0)
+        size_layout.addWidget(self.width_spin)
+        size_layout.addWidget(QtWidgets.QLabel("x"))
+        size_layout.addWidget(self.height_spin)
+        size_layout.addWidget(QtWidgets.QLabel("@"))
+        size_layout.addWidget(self.fps_spin)
+        size_layout.addWidget(QtWidgets.QLabel("Hz"))
+
+        transport_row = QtWidgets.QWidget()
+        transport_layout = QtWidgets.QHBoxLayout(transport_row)
+        transport_layout.setContentsMargins(0, 0, 0, 0)
+        transport_layout.addWidget(self.compressed_check)
+        transport_layout.addWidget(self.low_bandwidth_check)
+        transport_layout.addWidget(QtWidgets.QLabel("Quality"))
+        transport_layout.addWidget(self.quality_spin)
+        transport_layout.addStretch(1)
+
+        form.addRow("Mode", self.profile_combo)
+        form.addRow("Preset", self.resolution_combo)
+        form.addRow("RGB stream", size_row)
+        form.addRow("Transport", transport_row)
+        form.addRow("Parent frame", self.parent_frame_edit)
+        layout.addWidget(driver_box)
+
+        hint = QtWidgets.QLabel(
+            "RGBD starts the stereo/depth pipeline and publishes /oak/rgbd/points. "
+            "RGBD is limited to 1920x1080 here because higher RGB resolutions can "
+            "make the DepthAI component unstable with pointcloud enabled."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("QLabel { color: #4a5568; }")
+        layout.addWidget(hint)
+
+        actions = QtWidgets.QHBoxLayout()
+        apply_once = QtWidgets.QPushButton("Apply Once")
+        apply_once.clicked.connect(self.apply_once)
+        save_default = QtWidgets.QPushButton("Save Default")
+        save_default.clicked.connect(self.save_default)
+        start_now = QtWidgets.QPushButton("Start OAK")
+        start_now.clicked.connect(self.start_now)
+        close = QtWidgets.QPushButton("Close")
+        close.clicked.connect(self.close)
+        actions.addWidget(apply_once)
+        actions.addWidget(save_default)
+        actions.addWidget(start_now)
+        actions.addStretch(1)
+        actions.addWidget(close)
+        layout.addLayout(actions)
+
+        self.resolution_combo.currentIndexChanged.connect(self.on_preset_changed)
+        self.profile_combo.currentIndexChanged.connect(self.on_profile_changed)
+        self.compressed_check.toggled.connect(self.on_transport_changed)
+        self.load_from_settings(self.module.current_settings())
+
+    def load_from_settings(self, settings):
+        profile = settings.get("profile", DEFAULT_OAK_SETTINGS["profile"])
+        index = self.profile_combo.findData(profile)
+        self.profile_combo.setCurrentIndex(max(0, index))
+        self.width_spin.setValue(int(settings.get("width", DEFAULT_OAK_SETTINGS["width"])))
+        self.height_spin.setValue(int(settings.get("height", DEFAULT_OAK_SETTINGS["height"])))
+        self.fps_spin.setValue(float(settings.get("fps", DEFAULT_OAK_SETTINGS["fps"])))
+        self.compressed_check.setChecked(bool(settings.get("compressed", DEFAULT_OAK_SETTINGS["compressed"])))
+        self.low_bandwidth_check.setChecked(bool(settings.get("low_bandwidth", DEFAULT_OAK_SETTINGS["low_bandwidth"])))
+        self.quality_spin.setValue(int(settings.get("quality", DEFAULT_OAK_SETTINGS["quality"])))
+        self.parent_frame_edit.setText(str(settings.get("parent_frame", DEFAULT_OAK_SETTINGS["parent_frame"])))
+        self.sync_preset_to_values()
+        self.on_transport_changed()
+
+    def sync_preset_to_values(self):
+        current = (self.width_spin.value(), self.height_spin.value(), float(self.fps_spin.value()))
+        custom_index = self.resolution_combo.count() - 1
+        for index in range(self.resolution_combo.count()):
+            width, height, fps = self.resolution_combo.itemData(index)
+            if width is None:
+                continue
+            if (int(width), int(height), float(fps)) == current:
+                self.resolution_combo.blockSignals(True)
+                self.resolution_combo.setCurrentIndex(index)
+                self.resolution_combo.blockSignals(False)
+                return
+        self.resolution_combo.blockSignals(True)
+        self.resolution_combo.setCurrentIndex(custom_index)
+        self.resolution_combo.blockSignals(False)
+
+    def on_preset_changed(self, _index):
+        width, height, fps = self.resolution_combo.currentData()
+        if width is None:
+            return
+        self.width_spin.setValue(int(width))
+        self.height_spin.setValue(int(height))
+        self.fps_spin.setValue(float(fps))
+        self.clamp_rgbd_values()
+
+    def on_profile_changed(self, _index):
+        self.clamp_rgbd_values()
+        self.sync_preset_to_values()
+
+    def clamp_rgbd_values(self):
+        if self.profile_combo.currentData() != "rgbd":
+            return
+        changed = False
+        if self.width_spin.value() > OAK_RGBD_MAX_WIDTH:
+            self.width_spin.setValue(OAK_RGBD_MAX_WIDTH)
+            changed = True
+        if self.height_spin.value() > OAK_RGBD_MAX_HEIGHT:
+            self.height_spin.setValue(OAK_RGBD_MAX_HEIGHT)
+            changed = True
+        if self.fps_spin.value() > OAK_RGBD_MAX_FPS:
+            self.fps_spin.setValue(OAK_RGBD_MAX_FPS)
+            changed = True
+        if changed and self.module.context is not None:
+            self.module.context.append_log(
+                "[oak] RGBD + PointCloud limited to 1920x1080@15Hz for driver stability"
+            )
+
+    def on_transport_changed(self):
+        enabled = self.compressed_check.isChecked()
+        self.quality_spin.setEnabled(enabled)
+
+    def settings(self):
+        return {
+            "profile": self.profile_combo.currentData(),
+            "width": int(self.width_spin.value()),
+            "height": int(self.height_spin.value()),
+            "fps": float(self.fps_spin.value()),
+            "compressed": bool(self.compressed_check.isChecked()),
+            "low_bandwidth": bool(self.low_bandwidth_check.isChecked()),
+            "quality": int(self.quality_spin.value()),
+            "parent_frame": self.parent_frame_edit.text().strip() or DEFAULT_OAK_SETTINGS["parent_frame"],
+        }
+
+    def apply_once(self):
+        self.module.apply_settings(self.settings(), persist=False)
+
+    def save_default(self):
+        self.module.apply_settings(self.settings(), persist=True)
+
+    def start_now(self):
+        self.module.apply_settings(self.settings(), persist=False)
+        self.module.start_driver()
 
 
 class OakControlDialog(QtWidgets.QDialog):
@@ -222,10 +426,13 @@ class OakControlDialog(QtWidgets.QDialog):
         snapshot.clicked.connect(self.module.capture_snapshot)
         sample = QtWidgets.QPushButton("Sample GUI")
         sample.clicked.connect(self.module.open_sample_gui)
+        settings = QtWidgets.QPushButton("Settings")
+        settings.clicked.connect(self.module.open_settings)
         close = QtWidgets.QPushButton("Close")
         close.clicked.connect(self.close)
         actions.addWidget(snapshot)
         actions.addWidget(sample)
+        actions.addWidget(settings)
         actions.addStretch(1)
         actions.addWidget(close)
         layout.addLayout(actions)
@@ -265,15 +472,20 @@ class OakCameraModule(MurGuiModule):
     def __init__(self):
         self.context = None
         self._control_dialog = None
+        self._settings_dialog = None
         self._live_bridge = None
+        self._oak_settings = dict(DEFAULT_OAK_SETTINGS)
         self._last_topic = DEFAULT_COMPRESSED_TOPIC
         self._last_compressed = True
         self._last_max_side = 960
 
     def setup_ui(self, context):
         self.context = context
+        self._oak_settings = self.load_settings()
+        self._apply_live_defaults_from_settings(self._oak_settings)
         context.add_action_button("Start OAK", self.start_driver, section="OAK")
         context.add_action_button("Stop OAK", self.stop_driver, section="OAK")
+        context.add_action_button("OAK Settings", self.open_settings, section="OAK")
         context.add_action_button("OAK Live", self.open_controls, section="OAK")
         context.add_tool_button("OAK Snapshot", self.capture_snapshot, section="OAK")
         context.add_tool_button("OAK Sample GUI", self.open_sample_gui, section="OAK")
@@ -281,6 +493,118 @@ class OakCameraModule(MurGuiModule):
         self.status_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         context.add_status_row("OAK", self.status_label)
         context.append_log("[gui] OAK camera module loaded.")
+
+    def load_settings(self):
+        settings = dict(DEFAULT_OAK_SETTINGS)
+        try:
+            with open(OAK_SETTINGS_FILE, "r", encoding="utf-8") as handle:
+                stored = json.load(handle)
+            if isinstance(stored, dict):
+                settings.update(stored)
+        except FileNotFoundError:
+            pass
+        except (OSError, json.JSONDecodeError) as exc:
+            if self.context is not None:
+                self.context.append_log(f"[oak] failed to read settings: {exc}")
+        return self.normalize_settings(settings)
+
+    def save_settings(self, settings):
+        os.makedirs(OAK_LOG_DIR, exist_ok=True)
+        with open(OAK_SETTINGS_FILE, "w", encoding="utf-8") as handle:
+            json.dump(self.normalize_settings(settings), handle, indent=2, sort_keys=True)
+            handle.write("\n")
+
+    def normalize_settings(self, settings):
+        merged = dict(DEFAULT_OAK_SETTINGS)
+        merged.update(settings or {})
+        merged["profile"] = "rgbd" if str(merged.get("profile")).lower() == "rgbd" else "rgb"
+        merged["width"] = max(320, min(8000, int(merged.get("width", DEFAULT_OAK_SETTINGS["width"]))))
+        merged["height"] = max(240, min(6000, int(merged.get("height", DEFAULT_OAK_SETTINGS["height"]))))
+        merged["fps"] = max(1.0, min(60.0, float(merged.get("fps", DEFAULT_OAK_SETTINGS["fps"]))))
+        if merged["profile"] == "rgbd":
+            merged["width"] = min(merged["width"], OAK_RGBD_MAX_WIDTH)
+            merged["height"] = min(merged["height"], OAK_RGBD_MAX_HEIGHT)
+            merged["fps"] = min(merged["fps"], OAK_RGBD_MAX_FPS)
+        merged["compressed"] = bool(merged.get("compressed", DEFAULT_OAK_SETTINGS["compressed"]))
+        merged["low_bandwidth"] = bool(merged.get("low_bandwidth", DEFAULT_OAK_SETTINGS["low_bandwidth"]))
+        merged["quality"] = max(1, min(100, int(merged.get("quality", DEFAULT_OAK_SETTINGS["quality"]))))
+        merged["parent_frame"] = str(merged.get("parent_frame") or DEFAULT_OAK_SETTINGS["parent_frame"])
+        return merged
+
+    def current_settings(self):
+        return self.normalize_settings(self._oak_settings)
+
+    def apply_settings(self, settings, persist=False):
+        self._oak_settings = self.normalize_settings(settings)
+        self._apply_live_defaults_from_settings(self._oak_settings)
+        if persist:
+            self.save_settings(self._oak_settings)
+            self.context.append_log(f"[gui] OAK settings saved to {OAK_SETTINGS_FILE}")
+        else:
+            self.context.append_log("[gui] OAK settings applied for this session")
+        self._set_status(self._settings_summary(self._oak_settings))
+
+    def _apply_live_defaults_from_settings(self, settings):
+        compressed = bool(settings.get("compressed", True))
+        self._last_compressed = compressed
+        self._last_topic = DEFAULT_COMPRESSED_TOPIC if compressed else DEFAULT_RAW_TOPIC
+        if self._control_dialog is not None:
+            self._control_dialog.compressed_check.setChecked(compressed)
+            self._control_dialog.topic_edit.setText(self._last_topic)
+
+    def _settings_summary(self, settings):
+        mode = "RGBD + PointCloud" if settings["profile"] == "rgbd" else "RGB"
+        transport = "compressed" if settings["compressed"] else "raw"
+        return (
+            f"[oak] profile={mode}, rgb={settings['width']}x{settings['height']}@"
+            f"{settings['fps']:.1f}Hz, {transport}"
+        )
+
+    def _write_driver_params(self, settings):
+        settings = self.normalize_settings(settings)
+        os.makedirs(OAK_LOG_DIR, exist_ok=True)
+        rgbd = settings["profile"] == "rgbd"
+        low_bandwidth = bool(settings["low_bandwidth"])
+        compressed = bool(settings["compressed"])
+        lines = [
+            "/oak:",
+            "  ros__parameters:",
+            "    driver:",
+            "      i_enable_ir: false",
+            "      i_pipeline_auto_calibration_mode: ''",
+            "    pipeline_gen:",
+            "      i_enable_imu: false",
+            f"      i_enable_rgbd: {'true' if rgbd else 'false'}",
+            "      i_nn_type: none",
+            f"      i_pipeline_type: {'rgbd' if rgbd else 'rgb'}",
+            "    rgb:",
+            "      i_board_socket_id: 0",
+            "      i_disable_node: false",
+            "      i_enable_feature_tracker: false",
+            "      i_enable_lazy_publisher: false",
+            "      i_enable_nn: false",
+            f"      i_fps: {settings['fps']:.1f}",
+            f"      i_height: {settings['height']}",
+            f"      i_low_bandwidth: {'true' if low_bandwidth else 'false'}",
+            f"      i_low_bandwidth_quality: {settings['quality']}",
+            "      i_max_q_size: 2",
+            f"      i_publish_compressed: {'true' if compressed else 'false'}",
+            "      i_publish_raw: false",
+            "      i_publish_topic: true",
+            f"      i_undistorted: {'true' if rgbd else 'false'}",
+            f"      i_width: {settings['width']}",
+        ]
+        if rgbd:
+            lines.extend(
+                [
+                    "    stereo:",
+                    "      i_depth_preset: DEFAULT",
+                    "      i_publish_topic: true",
+                ]
+            )
+        with open(OAK_GENERATED_PARAMS_FILE, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
+        return OAK_GENERATED_PARAMS_FILE
 
     def _run_local(self, name, command, on_finished=None, env=None):
         self.context.start_process(
@@ -313,8 +637,16 @@ class OakCameraModule(MurGuiModule):
         self._run_local(f"oak_param_{label}", command)
 
     def start_driver(self):
-        command = "exec ros2 launch oak_camera_calibration oak4_pro_af_gui.launch.py"
-        self.context.append_log("[gui] Starting OAK4-D driver with GUI preview profile")
+        settings = self.current_settings()
+        params_file = self._write_driver_params(settings)
+        pointcloud_enable = "true" if settings["profile"] == "rgbd" else "false"
+        command = (
+            "exec ros2 launch oak_camera_calibration oak4_pro_af_gui.launch.py "
+            + f"params_file:={shlex.quote(params_file)} "
+            + f"parent_frame:={shlex.quote(settings['parent_frame'])} "
+            + f"pointcloud_enable:={pointcloud_enable}"
+        )
+        self.context.append_log(f"[gui] Starting OAK4-D driver: {self._settings_summary(settings)}")
         self._run_local(
             "oak_driver",
             command,
@@ -331,6 +663,15 @@ class OakCameraModule(MurGuiModule):
                 process.kill()
             return
         self.context.append_log("[gui] OAK driver was not started by this GUI")
+
+    def open_settings(self):
+        if self._settings_dialog is None:
+            self._settings_dialog = OakSettingsDialog(self, self.context.window)
+        else:
+            self._settings_dialog.load_from_settings(self.current_settings())
+        self._settings_dialog.show()
+        self._settings_dialog.raise_()
+        self._settings_dialog.activateWindow()
 
     def open_controls(self):
         if self._control_dialog is None:

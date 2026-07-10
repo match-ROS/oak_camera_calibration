@@ -14,6 +14,7 @@ def generate_launch_description():
     cam_roll = LaunchConfiguration("cam_roll")
     cam_pitch = LaunchConfiguration("cam_pitch")
     cam_yaw = LaunchConfiguration("cam_yaw")
+    pointcloud_enable = LaunchConfiguration("pointcloud_enable")
 
     oak_driver = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -29,7 +30,7 @@ def generate_launch_description():
             "name": "oak",
             "namespace": "",
             "params_file": params_file,
-            "camera_model": "OAK4-D",
+            "camera_model": "OAK4-D-PRO",
             "override_cam_model": "true",
             "parent_frame": parent_frame,
             "cam_pos_x": cam_pos_x,
@@ -38,6 +39,7 @@ def generate_launch_description():
             "cam_roll": cam_roll,
             "cam_pitch": cam_pitch,
             "cam_yaw": cam_yaw,
+            "pointcloud.enable": pointcloud_enable,
         }.items(),
     )
 
@@ -88,6 +90,11 @@ def generate_launch_description():
                 "cam_yaw",
                 default_value="-1.7026932502",
                 description="Calibrated OAK base-frame yaw from parent frame.",
+            ),
+            DeclareLaunchArgument(
+                "pointcloud_enable",
+                default_value="false",
+                description="Forwarded to depthai_ros_driver_v3 as pointcloud.enable.",
             ),
             oak_driver,
         ]
