@@ -14,8 +14,8 @@
       i_enable_feature_tracker: false
       i_enable_lazy_publisher: false
       i_enable_nn: false
-      i_fps: 15.0
-      i_height: 720
+      i_fps: 5.0
+      i_height: 1080
       i_low_bandwidth: true
       i_low_bandwidth_quality: 75
       i_max_q_size: 2
@@ -23,7 +23,7 @@
       i_publish_raw: false
       i_publish_topic: true
       i_undistorted: true
-      i_width: 1280
+      i_width: 1920
     stereo:
       i_depth_preset: DEFAULT
       i_publish_topic: true
