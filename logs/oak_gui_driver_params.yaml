@@ -14,7 +14,7 @@
       i_enable_feature_tracker: false
       i_enable_lazy_publisher: false
       i_enable_nn: false
-      i_fps: 5.0
+      i_fps: 15.0
       i_height: 1080
       i_low_bandwidth: true
       i_low_bandwidth_quality: 75
