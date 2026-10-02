@@ -3,6 +3,20 @@
 ROS 2 helpers for hand-eye calibration with an OAK 4 Pro AF mounted on a UR10e
 end effector.
 
+## Ubuntu application shortcut for the OAK control GUI
+
+After building the package on the GUI computer, install the “MuR OAK Kamera”
+application-search entry and desktop icon:
+
+```bash
+python3 /home/rosmatch/colcon_ws/src/match_mur_gui/scripts/install_gui_desktop.py --app oak
+```
+
+The shared installer checks `oak_camera_gui` and creates a user-level launcher
+that sources Jazzy and the Colcon workspace. The icon opens the OAK control
+GUI; it does not start the camera driver. Use `--workspace PATH` if the
+workspace is elsewhere.
+
 ## First step: acquire calibrated RGB images
 
 Build the package from the workspace root:
