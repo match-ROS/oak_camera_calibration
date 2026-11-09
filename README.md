@@ -1,5 +1,30 @@
 # oak_camera_calibration
 
+## OAK4-D auf diesem Ubuntu-26.04-/Lyrical-Rechner
+
+Die Ethernet-Kamera wurde am 2026-11-09 unter `192.168.8.238` erkannt und mit
+echten RGB-/Tiefenstreams getestet. Einrichtung, Profile, gemessene Grenzen und
+ROS-Start stehen in [OAK4_ETHERNET.md](OAK4_ETHERNET.md), der Arbeitsstand in
+[HANDOVER.md](HANDOVER.md).
+
+Livebild unabhängig von ROS öffnen, aus `~/UWA_ws`:
+
+```bash
+bash src/oak_camera_calibration/tools/oak4.sh live --profile rgb_preview
+```
+
+Für die Tiefenansicht stattdessen `--profile depth_neural_quality` (Details) oder
+`--profile depth_fast` (Tempo) verwenden. Stoppen:
+
+```bash
+bash src/oak_camera_calibration/tools/oak4.sh stop
+```
+
+Die folgenden Hand-Eye-/MuR-Abschnitte stammen vom früheren Jazzy-Rechner.
+Seine `colcon_ws`-Pfade, Desktop-Einrichtung und Roboter-TFs sind keine
+Einrichtungsanleitung für die neue, separat aufgestellte Kamera. Der neue
+Start `oak4_ethernet.launch.py` verwendet einen neutralen `oak_mount`-Frame.
+
 ROS 2 helpers for hand-eye calibration with an OAK 4 Pro AF mounted on a UR10e
 end effector.
 

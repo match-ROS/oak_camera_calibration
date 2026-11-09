@@ -19,7 +19,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
                 [
-                    FindPackageShare("depthai_ros_driver_v3"),
+                    FindPackageShare("depthai_ros_driver"),
                     "launch",
                     "driver.launch.py",
                 ]

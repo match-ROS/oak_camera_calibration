@@ -1,0 +1,4 @@
+# Isolated SDK environment, separate from ROS/system OpenCV.
+depthai==3.12.0
+numpy==2.5.4
+opencv-python==5.0.0.93

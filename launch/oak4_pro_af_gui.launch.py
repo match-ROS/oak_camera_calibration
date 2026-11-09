@@ -20,7 +20,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
                 [
-                    FindPackageShare("depthai_ros_driver_v3"),
+                    FindPackageShare("depthai_ros_driver"),
                     "launch",
                     "driver.launch.py",
                 ]
@@ -41,7 +41,7 @@ def generate_launch_description():
             "cam_yaw": cam_yaw,
             "pointcloud.enable": pointcloud_enable,
             # Loading the RSP and camera component into the same container is
-            # racy in the Jazzy depthai_ros_driver_v3 launch file. In failed
+            # racy in the Jazzy depthai_ros_driver launch file. In failed
             # starts only oak_state_publisher appears and the Driver is lost.
             "rsp_use_composition": "false",
         }.items(),
@@ -98,7 +98,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "pointcloud_enable",
                 default_value="false",
-                description="Forwarded to depthai_ros_driver_v3 as pointcloud.enable.",
+                description="Forwarded to depthai_ros_driver as pointcloud.enable.",
             ),
             oak_driver,
         ]
