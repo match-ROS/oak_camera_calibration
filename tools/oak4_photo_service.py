@@ -35,10 +35,12 @@ class PhotoCapture:
     def capture(self, mode='hq', frames=None, iso=100, focus=None):
         depth = mode.startswith('depth_')
         rgbd = mode == 'rgbd'
-        frames = (16 if depth else 8) if frames is None else frames
-        modes = ('standard', 'hq', 'compare', 'depth_standard', 'depth_hq', 'depth_compare', 'rgbd')
+        frames = (16 if depth else 1 if mode == 'hdr' else 8) if frames is None else frames
+        modes = ('standard', 'hq', 'compare', 'hdr', 'depth_standard', 'depth_hq', 'depth_compare', 'rgbd')
         if mode not in modes or type(frames) is not int or not (4 if depth else 1) <= frames <= 32 or not 100 <= iso <= 1600:
             raise ValueError('Invalid mode, frames (RGB 1..32, depth 4..32) or ISO (100..1600)')
+        if mode == 'hdr' and frames > 8:
+            raise ValueError('HDR supports 1..8 frames per exposure')
         if depth and iso != 100:
             raise ValueError('--iso controls RGB only; depth uses locked mono auto-exposure')
         if rgbd and iso != 100:
@@ -108,9 +110,12 @@ class PhotoCapture:
                     raise RuntimeError(f'Capture incomplete; see {report_path}')
                 result = dict(directory=str(directory), metadata=str(report_path), mode=mode,
                               images={k: str(directory / report[k]['path']) for k in
-                                      ('standard', 'hq_single', 'hq') if report.get(k, {}).get('path')},
+                                      ('standard', 'hq_single', 'hq', 'hdr') if report.get(k, {}).get('path')},
                               exposure_limited=report.get('exposure_limited', False),
                               data_files={k: str(directory / v) for k, v in report.get('data_files', {}).items()})
+                if mode == 'hdr':
+                    result['brackets'] = {step['name']: str(directory / step['path'])
+                                          for step in report['hdr_brackets']}
                 (directory / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
                 self.update(phase='READY', last_result=result, error=None)
                 return result
@@ -167,7 +172,7 @@ def serve(capture):
             return response
         return take
 
-    for mode in ('hq', 'standard', 'compare'):
+    for mode in ('hq', 'standard', 'compare', 'hdr'):
         node.create_service(Trigger, f'photo/capture_{mode}', callback(mode), callback_group=group)
     node.create_service(Trigger, 'photo/status', snapshot, callback_group=group)
     for mode in ('hq', 'standard', 'compare'):
@@ -175,7 +180,7 @@ def serve(capture):
     node.create_service(Trigger, 'depth/status', snapshot, callback_group=group)
     executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
-    node.get_logger().info('READY: /oak4/photo/capture_hq, capture_standard, capture_compare; /oak4/depth/capture_hq, capture_standard, capture_compare; status (domain65)')
+    node.get_logger().info('READY: /oak4/photo/capture_hq, capture_standard, capture_compare, capture_hdr; /oak4/depth/capture_hq, capture_standard, capture_compare; status (domain65)')
     try:
         executor.spin()
     except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):
@@ -190,8 +195,8 @@ def serve(capture):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('serve', 'capture'))
-    parser.add_argument('--mode', choices=('hq', 'standard', 'compare', 'depth_hq', 'depth_standard', 'depth_compare', 'rgbd'), default='hq')
-    parser.add_argument('--frames', type=int, default=None, help='Defaults: RGB 8, depth 16')
+    parser.add_argument('--mode', choices=('hq', 'standard', 'compare', 'hdr', 'depth_hq', 'depth_standard', 'depth_compare', 'rgbd'), default='hq')
+    parser.add_argument('--frames', type=int, default=None, help='Defaults: RGB 8, HDR 1 per exposure (max 8), depth 16')
     parser.add_argument('--iso', type=int, default=100)
     parser.add_argument('--focus', type=int, default=None, help='RGB manual lens position 0..255; omit for autofocus')
     args = parser.parse_args()

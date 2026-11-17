@@ -1,5 +1,34 @@
 # OAK4-Einrichtung und Live-/Grenztests
 
+## Optionaler HDR-Fotomodus, 2026-11-17
+
+- Nutzer fragt nach Erweiterung des guten HQ-Fotodienstes um unterschiedliche
+  Belichtungen statt ausschließlich identischer Mittelungsframes.
+- Implementiert als zusätzlicher Modus `capture --mode hdr`; bisheriger
+  HQ-Default bleibt. Drei native 8000×6000-Stufen −2/0/+2 EV, standardmäßig
+  ISO100 und ein Frame je Stufe; optional 1–8 Frames je Stufe mitteln.
+  Fokus/WB fest, tatsächliche Einstellungen prüfen. Basis 400–22500µs,
+  damit die gesamte Reihe im Bereich 100–90000µs bleibt. Referenzabweichung
+  und tatsächliche EV-Abstände dokumentiert.
+- Originalstufen/Metadaten erhalten, danach Kamera schließen und mit OpenCV
+  Mertens zu `hdr.png` fusionieren. ISP8Bit, kein RAW-/radiometrisches HDR,
+  keine Ausrichtung/Geisterbildkorrektur. Keine Roboteraktion oder Firmware-/
+  Kalibrieränderung.
+- 45 Tests/17 Subtests unter System-Python/pytest PASS. Native synthetische
+  48MP-Fusion PASS: 11,80s, 5169064KiB Spitzen-RSS, Strukturkontrast dunkel5/
+  hell27 Graustufen. Beleg `setup/oak4/hdr_validation_20261117/native-fusion.json`,
+  keine Realbilder. Gesamt-unittest-Aufruf im SDK-Venv zunächst wegen fehlender
+  pytest/yaml gescheitert; korrekte System-Python-Tests anschließend vollständig
+  bestanden. Keine Pakete geändert.
+- Realer Versuch mit Fokus107 an bestehender `.capture.lock` korrekt abgewiesen;
+  andere Kameranutzer erhalten. Hardware-Readbacks, Bildgewinn und Bewegungs-
+  artefakte noch ungeprüft. Fokus107 nur vorläufiger Montagewert, keine
+  Intrinsics-Freigabe.
+- CLI sofort verfügbar. Untätigen ROS-Fotodienst nach bestätigtem Status IDLE
+  neu geladen; `/oak4/photo/capture_hdr` in der Dienstliste bestätigt.
+  Anleitung OAK4_PHOTOS.md. Dienst nicht während eines Auftrags neu starten;
+  keine fremde Vorschau für HDR unterbrechen.
+
 ## Neumontage bestätigt, Sicht und Fokus geprüft, 2026-11-17
 
 - Nutzer bestätigt neue Montage. Der zuletzt stärker nach unten gerichtete

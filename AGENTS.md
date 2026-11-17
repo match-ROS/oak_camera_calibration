@@ -1,5 +1,12 @@
 # OAK-Kamera: Arbeitsregeln
 
+- Optionaler HDR-Fotomodus seit17.11.: bestehenden Fotopfad `capture --mode hdr`
+  nutzen; drei native Belichtungsstufen −2/0/+2EV bei festem ISO/Fokus/WB,
+  Originalstufen erhalten. Mertens-Ausgabe ist ISP-Belichtungsfusion als8-Bit-PNG,
+  kein radiometrisch kalibriertes RAW-HDR. Kamera/Szene statisch, keine
+  Bewegungskompensation; Nutzen an realen Bildern noch prüfen. Bestehendes HQ
+  und gemeinsame Kamera-Lease erhalten. Details/Nachweise OAK4_PHOTOS.md.
+
 - Gemeinsame RGB-D-Aufnahme seit16.11.: vorhandenes Fototool `capture --mode rgbd`,
   Anleitung OAK4_RGBD.md. ImageAlign auf entzerrtes RGB1280×960, tatsächliche
   Ausgabe-K/Zeiten/Masken sichern, gemeinsame Foto-Lease erhalten. Stereo bleibt

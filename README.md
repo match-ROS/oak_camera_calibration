@@ -33,7 +33,7 @@ Drei nativeStart-/Fotozyklen mit Fokus-, Größen-, Identitäts- und Frischeprü
 keine Armkommandos/automatischen Geräte-Resets. [Prüfung vom13.11. und verbleibende
 Grenzen](OAK4_STABILITY_2026-11-13.md).
 
-## Native48MP-Fotos: Standard, HQ und Vergleich
+## Native48MP-Fotos: Standard, HQ, HDR und Vergleich
 
 Der installierte **uwa-oak4-photo.service** bietet ISO100/8-Frame-HQ-Fotos über
 ROS-Domain65; die CLI funktioniert auch ohne gestarteten Dienst:
@@ -43,6 +43,11 @@ bash src/oak_camera_calibration/tools/oak4_photo.sh capture
 ```
 
 Aufruf aus `~/UWA_ws`. [Fotodienst: Aufrufe, Dateien, Grenzen und Prüfnachweis](OAK4_PHOTOS.md).
+
+Optional seit17.11.: `oak4_photo.sh capture --mode hdr --focus 107` nimmt drei
+Belichtungsstufen −2/0/+2EV auf und speichert native Stufen plus Mertens-Fusion.
+Nur statische Szene;8-Bit-ISP-Fusion, kein RAW-HDR. Software/native synthetische
+Fusion geprüft, realer HDR-Qualitätsvergleich wegen belegter Kamera noch offen.
 
 ## OAK4-D auf diesem Ubuntu-26.04-/Lyrical-Rechner
 

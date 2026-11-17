@@ -1,6 +1,6 @@
-# OAK4: Standard- und HQ-Fotodienst
+# OAK4: Standard-, HQ- und HDR-Fotodienst
 
-Stand: 2026-11-13, Ubuntu26.04 / ROS2 Lyrical. Für die physische Ethernet-OAK4
+Stand: 2026-11-17, Ubuntu26.04 / ROS2 Lyrical. Für die physische Ethernet-OAK4
 (`cameras.oak4` im zentralen Zellinventar) existiert **uwa-oak4-photo.service**.
 Der installierte systemd-Benutzerdienst startet bei der Benutzeranmeldung und
 wartet ohne offene Kamera auf einen Auftrag. Er arbeitet in **ROS-Domain65**
@@ -38,6 +38,68 @@ Grenzen: [OAK-Stabilitätsprüfung](OAK4_STABILITY_2026-11-13.md).
 
 ## Ein Foto aufnehmen
 
+### Optional: Belichtungsreihe / HDR-artige Fusion
+
+```bash
+bash src/oak_camera_calibration/tools/oak4_photo.sh capture --mode hdr --focus 107
+# Optional zusätzlich zwei Frames je Belichtungsstufe mitteln (insgesamt sechs):
+bash src/oak_camera_calibration/tools/oak4_photo.sh capture --mode hdr --focus 107 --frames 2
+```
+
+Fokus107 stammt aus der vorläufigen Montageprüfung vom17.11.; kein universelles
+Optimum und keine Intrinsics-Freigabe. Ohne `--focus` wird wie bisher einmal
+Autofokus bestimmt und für die Reihe gehalten.
+
+HDR nimmt drei verschiedene Belichtungsstufen **−2/0/+2EV** auf: viermal kürzer,
+Basiszeit, viermal länger. ISO bleibt standardmäßig100, Fokus und Weißabgleich
+bleiben fest. Metadaten bestätigen die tatsächlichen Werte jeder Aufnahme;
+nicht angewandte Belichtungen/Optikänderungen führen zum Fehler. `--frames`
+zählt hier **pro Stufe**, Standard1, Bereich1–8. Damit sind auch HDR und
+Rauschmittelung kombinierbar. HQ bleibt der bisherige Standardmodus.
+
+Die Basiszeit wird aus der Automatikmessung abgeleitet und auf400–22500µs
+begrenzt, damit alle drei Stufen im bewährten Bereich100–90000µs bleiben.
+In dunklen Szenen kann die Basis dadurch dunkler als die Automatik sein;
+`exposure_difference_ev` und `exposure_limited` beziehen sich auf diese
+Abweichung. Die einzelnen tatsächlichen EV-Abstände stehen in `hdr_brackets`.
+Auch die längste Stufe kann bei wenig Licht noch unzureichend sein.
+
+Ergebnisse unter `setup/oak4/photos/<Zeit>-hdr-<ID>/`:
+
+- `hdr-short.png`, `hdr-base.png`, `hdr-long.png`: native8000×6000-Stufen,
+  bei mehreren Frames jeweils deren Mittelwert; unverarbeitet durch Fusion.
+- `hdr.png`: gleich großes, normal anzeigbares8-Bit-PNG, OpenCV-Mertens-Fusion.
+- `metadata.json`: Einstellungen, eindeutige Sequenzen/Gerätezeiten je Frame,
+  Stufen und Verfahren; `result.json` mit `images.hdr` und `brackets`-Pfaden.
+
+Die Fusion läuft nach dem Schließen der Kamera. Sie kombiniert die
+ISP-dekodierten Bilder ohne geometrische Ausrichtung/Bewegungskompensation.
+**Kamera und gesamte Szene müssen stillstehen.** Bewegungen können Geisterbilder
+erzeugen. Das Ergebnis ist eine Belichtungsfusion mit normalem Anzeigeumfang,
+kein RAW, kein lineares HDR-Strahlungsbild und kein Genauigkeitsnachweis.
+Einzelstufen bleiben für Vergleiche und spätere Auswertung erhalten.
+Verfahrensgrundlage: [OpenCV HDR/Exposure Fusion](https://docs.opencv.org/5.0/py_tutorials/py_photo/py_hdr/py_hdr.html),
+[Luxonis CameraControl](https://docs.luxonis.com/software-v3/depthai/depthai-components/messages/camera_control/).
+
+CLI funktioniert sofort aus dem Quellstand. Der zusätzliche ROS-Trigger
+`/oak4/photo/capture_hdr` benötigt einen neu geladenen Fotodienst
+(`oak4_photo.sh restart`, nur ohne laufenden Fotoauftrag). Er verwendet
+ISO100/einen Frame je Stufe und Autofokus wie die bisherigen Trigger.
+Gemeinsame Kamerasperre, Domain65/LOCALHOST,300s-Workerlimit und Fehlerartefakte
+gelten unverändert. Fremde Vorschauen werden nicht beendet.
+
+Prüfung17.11.:45Tests/17Subtests mit System-Python/pytest bestanden, darunter
+Belichtungsgrenzen, ignorierte Controls, Optikänderungen, HDR-Dispatch und
+synthetische Struktur in hellen/dunklen Bereichen. Zusätzlich native48MP-Fusion
+mit synthetischer Szene bestanden:11,80s, ca4,93GiB Spitzen-RSS auf diesem PC.
+Rechen-/Speicherbedarf hängt von der Auslastung ab. Beleg:
+`setup/oak4/hdr_validation_20261117/native-fusion.json` imWorkspace.
+**Reale HDR-Aufnahme noch nicht geprüft:** erster Versuch korrekt an bestehender
+Kamera-Lease abgewiesen, keine konkurrierende Pipeline unterbrochen. Kein
+Bildqualitätsgewinn an der aktuellen realen Szene behauptet.
+
+### Standard und HQ
+
 Für laufendes modellbasiertes RGB-Tracking gibt es im Zellrepo den expliziten
 [CPU-Objekttracker](../multi_arm_manipulation_UWA/docs/object_tracking.md) mit
 1600×1200/10fps, festerOptik und tatsächlicherCameraInfo. Er teilt dieselbe
@@ -72,7 +134,7 @@ Keine fremdenDienste werden beendet. Anleitung imZellrepo:
 Ohne `--focus` bleibt das bisherige Autofokusverhalten unverändert. Unterschiedliche
 Fokuswerte nicht ungeprüft in einem Intrinsics-Fit mischen.
 
-Für Agenten/ROS-Knoten stehen vier `std_srvs/srv/Trigger`-Services bereit:
+Für Agenten/ROS-Knoten stehen `std_srvs/srv/Trigger`-Services bereit:
 
 ```bash
 source /opt/ros/lyrical/setup.bash

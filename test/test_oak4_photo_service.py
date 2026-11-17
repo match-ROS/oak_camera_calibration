@@ -40,6 +40,32 @@ class TransactionTests(unittest.TestCase):
                 self.capture.capture(**kwargs)
         self.assertFalse(self.capture.root.exists())
 
+    def test_hdr_dispatch_defaults_and_result_keep_brackets(self):
+        self.configure()
+        calls = []
+        def start(command, **kwargs):
+            calls.append(command)
+            output = Path(command[command.index('--output') + 1])
+            (output / 'metadata.json').write_text(json.dumps(dict(success=True,
+                hdr=dict(path='hdr.png'), hdr_brackets=[dict(name=name, path=f'hdr-{name}.png')
+                    for name in ('short', 'base', 'long')], exposure_limited=True)))
+            return Mock(wait=Mock(return_value=0))
+        with patch.object(service.subprocess, 'run', return_value=Mock(returncode=3)), \
+             patch.object(service.subprocess, 'Popen', side_effect=start):
+            result = self.capture.capture(mode='hdr', focus=107)
+        command = calls[0]
+        for key, value in (('--mode', 'hdr'), ('--frames', '1'), ('--iso', '100'), ('--focus', '107')):
+            self.assertEqual(command[command.index(key) + 1], value)
+        self.assertEqual(set(result['brackets']), {'short', 'base', 'long'})
+        self.assertIn('hdr', result['images'])
+        self.assertTrue(result['exposure_limited'])
+        self.assertEqual(self.capture.status()['phase'], 'READY')
+
+    def test_hdr_rejects_excessive_burst_before_transaction(self):
+        with self.assertRaises(ValueError):
+            self.capture.capture(mode='hdr', frames=9)
+        self.assertFalse(self.capture.root.exists())
+
     def test_busy_thread_preserves_running_status(self):
         self.capture.update(phase='CAPTURING')
         self.capture.mutex.acquire()
