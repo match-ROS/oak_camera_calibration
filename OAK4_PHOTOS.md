@@ -94,9 +94,33 @@ synthetische Struktur in hellen/dunklen Bereichen. Zusätzlich native48MP-Fusion
 mit synthetischer Szene bestanden:11,80s, ca4,93GiB Spitzen-RSS auf diesem PC.
 Rechen-/Speicherbedarf hängt von der Auslastung ab. Beleg:
 `setup/oak4/hdr_validation_20261117/native-fusion.json` imWorkspace.
-**Reale HDR-Aufnahme noch nicht geprüft:** erster Versuch korrekt an bestehender
-Kamera-Lease abgewiesen, keine konkurrierende Pipeline unterbrochen. Kein
-Bildqualitätsgewinn an der aktuellen realen Szene behauptet.
+Reale Fortsetzung17.11. nach ausdrücklicher Nutzerfreigabe: bestehende
+Fünfkamera-GUI regulär mit **Pause live view** pausiert; Leasefreigabe abgewartet.
+HDR ISO100/ein Frame je Stufe, Standard/HQ ISO100/acht Frames und HDR ISO400/
+zwei Frames je Stufe erfolgreich. Alle elf gespeicherten PNGs erneut nativ
+dekodiert; ISO/Fokus/WB und eindeutige steigende Sequenzen/Gerätezeiten geprüft.
+
+In dieser Szene war ISO100-HDR eher dunkel (Basis−1,708EV zur Automatik).
+ISO400 erlaubt dagegen4531/18125/72500µs mit vollständigen −2/0/+2EV um
+die gemessene Automatikhelligkeit, Fokus107/WB3896K konstant. Diese Reihe
+benötigte41,07s einschließlich Fusion. Geeigneter Aufruf für diese Beleuchtung:
+
+```bash
+bash src/oak_camera_calibration/tools/oak4_photo.sh capture --mode hdr --focus 107 --iso 400 --frames 2
+```
+
+Visuell werden helle Tischreflexe zurückgenommen; dunkle Bereiche zeigen weiter
+Rauschen, HQ wirkt dort sauberer. HDR deshalb optional lassen, kein pauschales
+Qualitätsversprechen. Der deskriptive Anteil Luma≥250 beträgt HQ0,330% und
+HDR4000,046%; das allein beweist keinen größeren nutzbaren Dynamikumfang.
+Getrennte Aufträge können Licht-/Szenenänderungen enthalten; keine unabhängige
+Stillstands- oder geometrische Genauigkeitsprüfung.
+Belege imWorkspace: `setup/oak4/hdr_validation_20261117/real-validation.json`,
+`real-comparison.jpg`, `real-crops-native.jpg`. Rohdaten unter
+`setup/oak4/photos/20261117-{173451-hdr-a4552d0c,173538-compare-c45d8cc8,173652-hdr-d0c5805e}/`.
+Kamera danach geschlossen, unabhängiger Sperrerwerb bestätigt
+(`camera-release.json`,17:38:11+08:00). GUI bleibt pausiert; **Resume live view**
+aktiviert sie bei Bedarf wieder. Keine Roboterbewegung/Firmware-/Kalibrieränderung.
 
 ### Standard und HQ
 

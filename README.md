@@ -47,7 +47,9 @@ Aufruf aus `~/UWA_ws`. [Fotodienst: Aufrufe, Dateien, Grenzen und Prüfnachweis]
 Optional seit17.11.: `oak4_photo.sh capture --mode hdr --focus 107` nimmt drei
 Belichtungsstufen −2/0/+2EV auf und speichert native Stufen plus Mertens-Fusion.
 Nur statische Szene;8-Bit-ISP-Fusion, kein RAW-HDR. Software/native synthetische
-Fusion geprüft, realer HDR-Qualitätsvergleich wegen belegter Kamera noch offen.
+und reale ISO100/400-Reihen geprüft. Bei aktueller Beleuchtung ist
+`--iso 400 --frames 2` ausgewogener; Schattenrauschen bleibt, kein pauschaler
+Qualitätsgewinn gegenüber HQ. Reale Vergleichsbilder/Nachweise OAK4_PHOTOS.md.
 
 ## OAK4-D auf diesem Ubuntu-26.04-/Lyrical-Rechner
 

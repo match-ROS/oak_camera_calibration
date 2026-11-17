@@ -4,8 +4,10 @@
   nutzen; drei native Belichtungsstufen −2/0/+2EV bei festem ISO/Fokus/WB,
   Originalstufen erhalten. Mertens-Ausgabe ist ISP-Belichtungsfusion als8-Bit-PNG,
   kein radiometrisch kalibriertes RAW-HDR. Kamera/Szene statisch, keine
-  Bewegungskompensation; Nutzen an realen Bildern noch prüfen. Bestehendes HQ
-  und gemeinsame Kamera-Lease erhalten. Details/Nachweise OAK4_PHOTOS.md.
+  Bewegungskompensation. Real am17.11. mit ISO100/400 geprüft: ISO100 kann die
+  Basis wegen90ms-Grenze abdunkeln; ISO400 passt hier zur vollständigen Reihe,
+  Schattenrauschen bleibt sichtbar. Kein pauschaler Qualitätsgewinn gegenüber
+  HQ. Bestehendes HQ und gemeinsame Kamera-Lease erhalten. OAK4_PHOTOS.md.
 
 - Gemeinsame RGB-D-Aufnahme seit16.11.: vorhandenes Fototool `capture --mode rgbd`,
   Anleitung OAK4_RGBD.md. ImageAlign auf entzerrtes RGB1280×960, tatsächliche

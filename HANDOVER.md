@@ -2,6 +2,46 @@
 
 ## Optionaler HDR-Fotomodus, 2026-11-17
 
+- Nutzerfeedback nach Realvergleich: HDR gefällt; Nutzer fragt nach Ursache der
+  langen Laufzeit. Keine zusätzliche Geschwindigkeitsanforderung/Zielzeit oder
+  Freigabe für Auflösungsreduktion daraus ableiten. Analyse des vorhandenen
+  ISO400-/6Frame-Auftrags:41,07s Gesamtzeit, tatsächliche summierte Belichtungs-
+  zeit nur0,190312s. Regulärer Erfolgsweg enthält11,3s feste Sleeps (5s Einlauf,
+  1,5s Optiksperre, dreimal1,5s Belichtungswechsel,0,3s Abschluss).
+  Zwischen erstem/letztem HDR-Frame13,00058s Gerätezeit, darin auch Übertragung,
+  Mittelung, PNG-Speicherung und Wartezeiten zwischen Stufen; diese Zeiten
+  nicht additiv doppelt zählen. Drei Stufen-PNGs werden vor der Fusion auf
+  Platte geschrieben und danach erneut dekodiert; Kamera-/Pipelineaufbau,
+  48MP-Verarbeitung, Mertens und finales PNG kommen hinzu. Einzelphasen nicht
+  separat gemessen. Beschleunigungspotenzial: Readback-basiertes Warten und
+  weniger serielle PNG-Zwischenschritte, bei gleicher Auflösung/Originalerhalt.
+
+- Reale Fortsetzung auf ausdrückliche Nutzerfreigabe für kurze Aufnahmen und
+  anschließende Freigabe der Kamera: alte Fünfkamera-Vorschau hielt die Lease.
+  Über ihren regulären `Pause live view`-Knopf pausiert (Atspi-Bedienung);
+  tatsächliches Schließen/Sperrfreigabe abgewartet. GUI bleibt geöffnet und
+  pausiert, keine Roboterbewegung ausgelöst.
+- Drei reale Aufträge erfolgreich: `20261117-173451-hdr-a4552d0c` mit ISO100/
+  drei Frames/5625–22500–90000µs (37,66s); `20261117-173538-compare-c45d8cc8`
+  mit Standard plus acht HQ-Frames bei ISO100/72500µs (23,46s);
+  `20261117-173652-hdr-d0c5805e` mit ISO400/zwei Frames je Stufe/
+  4531–18125–72500µs (41,07s). Fokus107 in allen Frames; WB je Auftrag fest.
+  ISO400-EV-Abstände −2,00008/0/+2, eindeutige steigende Sequenzen/Gerätezeiten.
+  Alle elf gespeicherten PNGs erneut vollständig als8000×6000 dekodiert.
+- ISO100-Reihe liegt wegen Zeitgrenze mit Basis−1,708EV unter der Automatik,
+  daher sichtbar dunkel. ISO400-Reihe vollständig um die Automatik zentriert,
+  `exposure_limited=false`. Visuell weniger helle Tischreflexe, Schatten weiter
+  sichtbar verrauscht; HQ wirkt dort sauberer. Kein pauschaler Bildgewinn,
+  keine Messung kalibrierten Dynamikumfangs/Geometrie-/Rauschgenauigkeit.
+  Einzelaufträge sind zeitlich getrennt, kein synchroner Vergleich.
+- Reale Nachweise und Vergleichsbilder imWorkspace:
+  `setup/oak4/hdr_validation_20261117/{real-validation.json,real-comparison.jpg,
+  real-crops-native.jpg,validate_real.py}`. Deskriptiv: Anteil Luma≥250
+  HQ0,330% / HDR4000,046%; schwarze Pixel können echte dunkle Objekte sein.
+  `camera-release.json`: Sperre am17.11.17:38:11+08:00 unabhängig erworben;
+  GUI meldet PAUSED/OAK released. Eigene Worker beendet, Kamera freigegeben.
+  Frühere Aussagen unten „noch ungeprüft“ sind durch diese Fortsetzung überholt.
+
 - Nutzer fragt nach Erweiterung des guten HQ-Fotodienstes um unterschiedliche
   Belichtungen statt ausschließlich identischer Mittelungsframes.
 - Implementiert als zusätzlicher Modus `capture --mode hdr`; bisheriger
@@ -20,10 +60,9 @@
   keine Realbilder. Gesamt-unittest-Aufruf im SDK-Venv zunächst wegen fehlender
   pytest/yaml gescheitert; korrekte System-Python-Tests anschließend vollständig
   bestanden. Keine Pakete geändert.
-- Realer Versuch mit Fokus107 an bestehender `.capture.lock` korrekt abgewiesen;
-  andere Kameranutzer erhalten. Hardware-Readbacks, Bildgewinn und Bewegungs-
-  artefakte noch ungeprüft. Fokus107 nur vorläufiger Montagewert, keine
-  Intrinsics-Freigabe.
+- Erster Versuch mit Fokus107 vor der obigen Fortsetzung an bestehender
+  `.capture.lock` korrekt abgewiesen; andere Kameranutzer damals erhalten.
+  Fokus107 bleibt vorläufiger Montagewert, keine Intrinsics-Freigabe.
 - CLI sofort verfügbar. Untätigen ROS-Fotodienst nach bestätigtem Status IDLE
   neu geladen; `/oak4/photo/capture_hdr` in der Dienstliste bestätigt.
   Anleitung OAK4_PHOTOS.md. Dienst nicht während eines Auftrags neu starten;
