@@ -1,5 +1,49 @@
 # oak_camera_calibration
 
+Gemeinsame [entzerrte RGB-D-Aufnahme](OAK4_RGBD.md) seit16.11.2026:
+`bash src/oak_camera_calibration/tools/oak4_photo.sh capture --mode rgbd`.
+Acht zeitlich gepaarte RGB-/Tiefenbilder im gleichen1280×960-Bildgitter,
+Ausgabe-K und Zeitstempel, gemeinsame Fotolease. Erster realer Datensatz geprüft;
+Genauigkeitsprüfung und Objektpose folgen gesondert.
+
+Ein erster [CPU-Objekttracker im Zellrepo](../multi_arm_manipulation_UWA/docs/object_tracking.md)
+verwendet die OAK explizit mit1600×1200/10fps, getrennten statischen und
+dynamischen Modi und passenderCameraInfo. Er teilt die HQ-Fotolease; die eigene
+Tracking-Pipeline vor einem Foto schließen. Keine Roboterbewegung.
+
+Auch **statische HQ-Tiefendaten** sind über denselben Dienst verfügbar:
+`bash src/oak_camera_calibration/tools/oak4_photo.sh capture --mode depth_hq`.
+Native1280×800,16Frames, robuster Median/Gültigkeitsmasken.
+[Bedienung und Grenzen](OAK4_DEPTH.md).
+Die gespeicherte HQ-Tiefe als3D-Punktwolke öffnen:
+`bash src/oak_camera_calibration/tools/oak4_photo.sh view-depth`.
+
+
+Die OAK wurde am13.11.2026 mit ausdrücklicher Freigabe auf **LuxonisOS1.47.0**
+aktualisiert. Werkskalibrierung unverändert;15native8K-Startzyklen und der
+abschließende Fünfkamera-Satz bestanden. [Nachweis und Grenzen](OAK4_STABILITY_2026-11-13.md).
+
+## OAK vor einem Scan prüfen
+
+```bash
+bash src/oak_camera_calibration/tools/oak4_photo.sh check --count 3 --focus 116
+```
+
+Drei nativeStart-/Fotozyklen mit Fokus-, Größen-, Identitäts- und Frischeprüfung;
+keine Armkommandos/automatischen Geräte-Resets. [Prüfung vom13.11. und verbleibende
+Grenzen](OAK4_STABILITY_2026-11-13.md).
+
+## Native48MP-Fotos: Standard, HQ und Vergleich
+
+Der installierte **uwa-oak4-photo.service** bietet ISO100/8-Frame-HQ-Fotos über
+ROS-Domain65; die CLI funktioniert auch ohne gestarteten Dienst:
+
+```bash
+bash src/oak_camera_calibration/tools/oak4_photo.sh capture
+```
+
+Aufruf aus `~/UWA_ws`. [Fotodienst: Aufrufe, Dateien, Grenzen und Prüfnachweis](OAK4_PHOTOS.md).
+
 ## OAK4-D auf diesem Ubuntu-26.04-/Lyrical-Rechner
 
 Die Ethernet-Kamera wurde am 2026-11-09 unter `192.168.8.238` erkannt und mit

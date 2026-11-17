@@ -8,7 +8,10 @@ Messwerte stammen von der angeschlossenen Kamera, nicht aus einem Datenblatt.
 - Ethernet: `192.168.8.238`, Host `enp87s0`, 2,5-Gbit/s-Link. Die vorhandene
   Internetroute bleibt erhalten. Die IP kann sich bei anderer DHCP-Vergabe ändern.
 - Geräte-Agent meldet **OAK4-D R9**, DepthAI meldet **OAK-4-PRO**, Plattform RVC4.
-- Luxonis OS **1.32.1**, Agent **0.20.0**. Kein Firmware-Update durchgeführt.
+- Seit dem ausdrücklich freigegebenen Update am **13.11.2026**: Luxonis OS
+  **1.47.0**, Agent **0.28.0**. Werkskalibrierung vor/nach OTA identisch.
+  Die Messungen vom09.11. erfolgten noch mit OS1.32.1/Agent0.20.0.
+  Nachweise: [Stabilitätsprüfung und Update](OAK4_STABILITY_2026-11-13.md).
 - RGB: IMX586 mit Autofokus, 8000×6000; Stereo: zweimal OV9282, 1280×800.
 - Offizielles `oakctl` **0.31.1** unter `~/UWA_ws/setup/oak4/bin/oakctl`.
 - Isolierte Python-3.14-Umgebung `~/UWA_ws/.venvs/oak4`: DepthAI **3.12.0**,
@@ -174,6 +177,27 @@ Der ROS-Start ist ein funktionaler RGBD-Vorschaustart, kein Hochgeschwindigkeits
 Benchmark. Die Extreme werden mit den SDK-Profilen gemessen. Die historischen
 Hand-Eye-TFs des MuR werden hier nicht übernommen; sie gelten nicht automatisch
 für die aktuell separat aufgestellte Kamera.
+
+## Zusätzliche USB-OAK: Geräteidentifikation
+
+Am 2026-11-09 wurde die unbeschriftete USB-C-Kamera ausgelesen: **OAK-D Pro AF**
+(EEPROM), **OAK-D-PRO-AF** (SDK), RVC2, IMX378-Autofokus und zwei OV9282.
+Die frühere Vermutung OAK-D-S2-FF ist für dieses Gerät korrigiert. Die zweite
+Zusatzkamera bleibt ungeprüft. Diagnose lokal unter
+`~/UWA_ws/setup/oak4/usb-identification/`; keine Gerätekalibrierung verändert.
+
+Für USB-Zugriff wurde die Regel `tools/60-luxonis-oak.rules` installiert:
+
+```bash
+cd ~/UWA_ws
+sudo install -m0644 src/oak_camera_calibration/tools/60-luxonis-oak.rules \
+  /etc/udev/rules.d/60-luxonis-oak.rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger --subsystem-match=usb --attr-match=idVendor=03e7
+```
+
+Sie erlaubt Zugriff für die lokale Sitzung / Gruppe `plugdev`; der Benutzer
+dieses PCs ist Gruppenmitglied. Das Ethernet-OAK-Setup benötigt diese Regel nicht.
 
 ## Herstellerreferenzen
 
