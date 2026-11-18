@@ -1,5 +1,88 @@
 # OAK4-Einrichtung und Live-/Grenztests
 
+## Kartongriff: widersprüchliche Posen neu prüfen, 2026-11-18
+
+- Freigegebener Zellauftrag nutzt16:40:19 ein weiteres Standardfoto/Fokus107
+  über bestehenden Fotodienst, Kamera danach geschlossen. Aufnahme
+  `setup/oak4/photos/20261118-164019-standard-23042f4e/`.
+- Neue CPU-Texturpose mit unverändertem Fokus107-K/D:29Inlier/2,938px.
+  Die109mm/7,71° sind eine Differenz zweier Schätzungen, keine nachgewiesene
+  Kartonbewegung. Nutzer bestätigt: Karton zwischen Wristaufnahmen unverändert.
+  Frühere kausale Zuordnung zur Kartonbewegung zurückgenommen. Beobachtung ist keine
+  absolute Genauigkeitsqualifikation oder Manipulationsfreigabe. Keine
+  globale Kamera-/Basisprofiländerung. Wrist-Stereopaar deshalb verworfen,
+  keine Fingerbefehle/kein Greifen/Hub, alle Arme gehalten.
+- Zellstand `work/carton-contact-grasp-20261118.md`, Rohpose im Workspace
+  `setup/tasks/carton_grasp_20261118_scene02/`.
+- Nach Nutzerkorrektur weiteres Standardfoto16:50:12/Fokus107 über bestehenden
+  Fotodienst, Kamera anschließend frei. Aktuelle Texturpose27Inlier/3,051px,
+  Schätzdifferenz zur16:40-Aufnahme0,506mm/0,438°; interne Wiederholbarkeit,
+  kein Absolutnachweis. Neue Pose/Bildoverlay/Basisbindung unter
+  `setup/tasks/carton_grasp_20261118_scene03/`. Keine globale Profiländerung.
+  Beide hohen Vor-Greifziele neu geometrisch geprüft; tatsächliche Fahrvorprüfung
+  scheitert vor jedem Ziel am bestehenden Hardware-Frischewächter. Kein Griff.
+
+## Separate USB-OAK am N100: eingerichtet und getestet,2026-11-18
+
+- Nutzer beauftragt ROS und Installation/Test der USB-Luxonis-Kamera am
+  N100/miniminiPC. Von Ethernet-OAK4 getrennt behandeln. Ubuntu26.04.1/
+  Kernel7.0.0-43-generic. USB-OAK-D Pro AF/RVC2, ID18443010314F3B1300,
+  DM9098/R6M2E6, IMX378-AF +2×OV9282; aktiver Betrieb USB3/SUPER/5000M.
+  Keine OAK4- oder Roboterdienste für diesen Auftrag angesprochen.
+- ROS2Lyrical-Desktop und offizieller depthai-ros-Treiber3.4.0 installiert;
+  bestehende Regel60-luxonis-oak.rules wiederverwendet. SDK3.12.1 in eigener
+  N100-Venv `~/uwa-camera/.venv`, getrennt von ROS-Systembibliotheken.
+- Neues Werkzeug `tools/usb_oak_check.py`: nur USB/RVC2, genau ein gewähltes
+  Gerät, eigener flock, begrenzte Dauer; RGB und verfügbare Mono-/Stereo-
+  tiefe, Sequenz-/Zeitprüfung, Bericht und letzteFrames. Factorykalibrierung
+  nur lesen/vorher-nachher hashen. Kein Flash/EEPROM-Schreiben/IR-Leistungs-
+  befehl. Realer15s-Recheck: je149Frames RGB640×480, links/rechts/Tiefe640×400,
+  etwa10fps ohneSequenzlücken; Factory-Hashgleich, Gerätgeschlossen.
+  ErsterTest scheiterte nur an ReadCalibration nach Pipeline-Kontextende;
+  Abfrage vor Schließen verlegt, Fehlbericht erhalten. RGB zeigt fast glatte
+  Wand; IR aus, ca15% gültige Tiefe, keine Genauigkeits-/Qualitätsfreigabe.
+  Testdomain65/LOCALHOST. Gesamtstand im Workspace-HANDOVER, Artefakte unter
+  `setup/n100/ros-camera/`; Ergebnisse auf N100 `~/uwa-camera/results/`.
+- Neues `tools/usb_oak_ros_check.py`: begrenzter Image/CameraInfo-Empfänger,
+  Payload-/Zeit-/K-Prüfung; Lyrical-interne /_buf_-Transportthemen auslassen
+  (sonst rekursive Abonnements). ROS-Pub/Sub separat PASS; echter Treiber
+  liefert RGB/Mono/Tiefe, steigende Zeiten und CameraInfo PASS. Gemessen am
+  Python-Prüfer ca7,4fpsRGB,6–8fpsMono,4,7fpsTiefe/15s; kein Maximaltest.
+  ROS-Tiefe auf RGB640×480 ausgerichtet. AutoCalibration OFF/IR aus.
+  N100-Start `bash ~/uwa-camera/start-oak-ros.sh`, exakte USB-ID/eigenerflock,
+  Ctrl+C gibt Kamera frei; kein Autostart. README dort erklärt Bildanzeige.
+
+## Kartonerkennung und reale Vor-Greifpose,2026-11-18
+
+- ImZellauftragfrischesStandardfotoFokus107um14:55:32aufgenommen; späterRF-
+  Kontrollfoto15:17:49undAbschlussfotoüberdenselbenFotopfad. Keinekonkurrierende
+  Kamera-Appaktiv; Kameradanachgeschlossen. BestehendeOptik-/Poseprofileglobal
+  unverändert, aktueller107-KandidatimTaskexplizitverwendet.
+- Texturregistrierung imvisuellgewähltenKartonausschnitt25Inlier/2,729px,
+  GesamtbildvorversucheLOSTerhalten. AnschließendbeiderechtenURsrealinVor-
+  Greifposegefahren; all4abschließendgehalten/stationär,keineFinger-/Griff-/
+  Hubaktion. DiesisteinseparaterausdrücklichfreigegebenerZellauftrag,
+  keineallgemeineArmfreigabedurchKamerafotos. GesamtquelleimWorkspace
+  setup/tasks/carton_pregrasp_20261118_completed/, aktuelleZellübergabegepflegt.
+
+## Fokus für beide festen Tischboards geprüft, 2026-11-18
+
+- Nutzer wünscht vorderes und hinteres festes Board gemeinsam im Fokus.
+  Eigene Fünfkamera-GUI geordnet geschlossen; vorhandenen Standard-Fotopfad
+  für vier native8000×6000-Aufnahmen bei100/107/112/116 genutzt. Fokuswerte
+  in Frame-Metadaten bestätigt, Kamera unverändert montiert. An denselben
+  statischen Bildregionen ist107 bei beiden Boards visuell und anhand einer
+  kontrastnormalisierten Schärfemetrik am besten. Ecken hinten/vorne:
+  100=9/18,107=24/24,112=19/24,116=0/21. AE/ISO leicht unterschiedlich;
+  kein Nachweis global optimalen Fokus oder absoluter Kalibriergenauigkeit.
+- Daten/vergleichende Ausschnitte im Zellaufnahmeordner
+  setup/calibration/oak_capture_proposal_20261118/focus_both_static/;
+  Originale setup/oak4/photos/20261118-140506-standard-9c7d3b43 und
+  140546-standard-81f5bdb4/140559-standard-ab964c3e/140611-standard-faa89f5f.
+  Fünfkamera-GUI wieder mit107 gestartet, aktives datensatzlokales Profil
+  acquisition_active.yaml. Keine EEPROM-/Intrinsics-/Extrinsicsänderung,
+  keine Roboterkommandos. Matching-Fokus-Intrinsics weiterhin zu validieren.
+
 ## HDR beschleunigt und real geprüft, 2026-11-18
 
 - Nutzer beauftragt ausdrücklich eine auf Geschwindigkeit optimierte Umsetzung;
