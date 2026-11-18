@@ -12,7 +12,7 @@ os.environ.setdefault('DEPTHAI_TELEMETRY', '0')
 import cv2
 import depthai as dai
 import numpy as np
-from oak4_hdr import bracket_plan, verify_exposure, fuse
+from oak4_hdr import acquire as acquire_hdr, finish as finish_hdr
 
 
 def metadata(frame):
@@ -62,6 +62,16 @@ while True:
             output = gate.outputs['still'].createOutputQueue(maxSize=1, blocking=False)
             trigger = gate.inputs['trigger'].createInputQueue()
             control = cam.inputControl.createInputQueue()
+            preview = None
+            if args.mode == 'hdr':
+                # OAK4 8K supports one ISP output: derive metadata preview from it.
+                small = pipeline.create(dai.node.ImageManip)
+                small.initialConfig.setOutputSize(320, 240)
+                small.setMaxOutputFrameSize(320 * 240 * 3)
+                small.inputImage.setBlocking(False)
+                small.inputImage.setMaxSize(1)
+                full.link(small.inputImage)
+                preview = small.out.createOutputQueue(maxSize=2, blocking=False)
             last_sequence = -1
 
             def capture():
@@ -83,6 +93,12 @@ while True:
 
             pipeline.start()
             try:
+                if args.mode == 'hdr':
+                    def manual_control():
+                        ctrl = dai.CameraControl()
+                        ctrl.setAutoFocusMode(dai.CameraControl.AutoFocusMode.OFF)
+                        return ctrl
+                    return acquire_hdr(args, report, capture, control, preview, manual_control, metadata)
                 time.sleep(5)
                 frame, meter = capture()
                 report['metering'] = meter
@@ -109,56 +125,6 @@ while True:
                 reference_ev = standard['exposure_us'] * max(1, standard['reported_iso'])
                 if reference_ev <= 0:
                     raise RuntimeError('Invalid metering exposure')
-                if args.mode == 'hdr':
-                    plan = bracket_plan(reference_ev, args.iso)
-                    report['hdr_brackets'] = []
-                    report['exposure_difference_ev'] = math.log2(
-                        plan[1]['exposure_us'] * args.iso / reference_ev)
-                    report['exposure_limited'] = abs(report['exposure_difference_ev']) > .2
-                    for step in plan:
-                        ctrl = dai.CameraControl()
-                        ctrl.setManualExposure(step['exposure_us'], args.iso)
-                        ctrl.setManualWhiteBalance(standard['white_balance_K'])
-                        control.send(ctrl)
-                        # Discard control-transition frames; only confirmed readbacks count.
-                        for attempt in range(3):
-                            time.sleep(1.5)
-                            frame, info = capture()
-                            try:
-                                verify_exposure(info, step['exposure_us'], args.iso, standard)
-                                break
-                            except RuntimeError:
-                                del frame
-                                if attempt == 2:
-                                    raise
-                        entry = dict(step, frames=[info])
-                        report['hdr_brackets'].append(entry)
-                        image = frame.getCvFrame()
-                        del frame
-                        if args.frames > 1:
-                            accumulator = image.astype(np.float32)
-                            del image
-                            for i in range(1, args.frames):
-                                frame, extra = capture()
-                                verify_exposure(extra, info['exposure_us'], args.iso, info)
-                                if extra['exposure_us'] != info['exposure_us']:
-                                    raise RuntimeError('HDR exposure changed during averaging')
-                                accumulator += frame.getCvFrame()
-                                entry['frames'].append(extra)
-                                del frame
-                            accumulator /= args.frames
-                            np.rint(accumulator, out=accumulator)
-                            image = accumulator.astype(np.uint8)
-                            del accumulator
-                        entry['path'] = save(f"hdr-{step['name']}.png", image)
-                        del image
-                        print(f"HDR {step['name']}: DONE ({len(entry['frames'])} frames)", flush=True)
-                    actual_base = report['hdr_brackets'][1]['frames'][0]['exposure_us']
-                    for entry in report['hdr_brackets']:
-                        entry['actual_ev'] = math.log2(entry['frames'][0]['exposure_us'] / actual_base)
-                        if abs(entry['actual_ev'] - entry['target_ev']) > .1:
-                            raise RuntimeError('HDR bracket spacing not confirmed')
-                    return
                 requested = exposure_for(reference_ev, args.iso)
                 for attempt in range(3):
                     ctrl = dai.CameraControl()
@@ -208,7 +174,8 @@ while True:
                 restore.setAutoFocusMode(dai.CameraControl.AutoFocusMode.CONTINUOUS_VIDEO)
                 try:
                     control.send(restore)
-                    time.sleep(.3)
+                    if args.mode != 'hdr':
+                        time.sleep(.3)
                 finally:
                     pipeline.stop()
                     pipeline.wait()
@@ -236,6 +203,7 @@ def main():
         p.error('Output already contains a capture')
     report = dict(schema=1, started_at=datetime.now().astimezone().isoformat(),
                   mode=args.mode, camera_ip=args.ip, depthai=dai.__version__,
+                  opencv=cv2.__version__,
                   sensor_fps=10, width=8000, height=6000, requested_iso=args.iso,
                   requested_frames=args.frames, exposure_trials=[], hq_frames=[],
                   requested_manual_focus=args.focus,
@@ -243,21 +211,16 @@ def main():
                   timestamps='device monotonic time; not synchronized to ROS/wall clock',
                   success=False)
     try:
-        collect(args, report)
+        tick = time.monotonic()
+        images = collect(args, report)
+        camera_closed = time.monotonic()
         if args.mode == 'hdr':
-            # Release the physical camera before CPU-heavy exposure fusion.
+            report['hdr_timing_s']['camera_session'] = camera_closed - tick
+            report['hdr_implementation'] = 'metadata-confirmed controls; in-memory fusion; concurrent lossless PNG level1'
             print('HDR camera CLOSED; fusion RUNNING', flush=True)
-            images = [cv2.imread(str(args.output / step['path'])) for step in report['hdr_brackets']]
-            if any(image is None for image in images):
-                raise RuntimeError('Cannot decode saved HDR brackets')
-            result = fuse(images)
-            if not cv2.imwrite(str(args.output / 'hdr.png'), result, [cv2.IMWRITE_PNG_COMPRESSION, 3]):
-                raise RuntimeError('Cannot save hdr.png')
-            report['hdr'] = dict(path='hdr.png', method='OpenCV Mertens (contrast=1,saturation=1,exposure=1)',
-                                 encoding='ISP 8-bit BGR exposure fusion; not radiometric RAW HDR',
-                                 alignment='none; static camera and scene required',
-                                 frame_count=3 * args.frames)
+            finish_hdr(args.output, images, report)
             report['averaging'] = 'Within each exposure only, before fusion' if args.frames > 1 else 'none'
+            report['hdr_timing_s']['worker_total'] = time.monotonic() - tick
         report['success'] = True
     except Exception as error:
         report['error'] = str(error)

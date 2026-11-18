@@ -1,5 +1,49 @@
 # OAK4-Einrichtung und Live-/Grenztests
 
+## HDR beschleunigt und real geprüft, 2026-11-18
+
+- Nutzer beauftragt ausdrücklich eine auf Geschwindigkeit optimierte Umsetzung;
+  bisheriges Feedback: HDR gefällt. Volle8000×6000, Originalstufen, zwei Frames
+  je Stufe und bestehende Mertens-Gewichte erhalten; keine Auflösungsreduktion.
+- HDR misst AE/WB über320×240-ImageManip desselben nativen ISP-Outputs.
+  Fester Fokus: mindestens2s Einlauf und fünf stabile Metadatenframes
+  (EV-Spanne<0,05/WB-Spanne≤30K, Fokus gleich); Autofokus mindestens5s.
+  Controls pro Stufe an zwei aufeinanderfolgenden Metadatenframes bestätigen;
+  danach jedes echte Vollbild prüfen. Wartepfade begrenzt, keine ungeprüfte
+  Übernahme. Zeitlimits/Lease, feste ISO/Fokus/WB und native Größenprüfung bleiben.
+- Ein Kamera-Output für8K erforderlich: erster Versuch mit zweitem Camera-
+  Output lieferte keine Metadaten und brach kontrolliert ab (110520/110558).
+  Nach offiziellem Luxonis-8K-Beispiel auf ImageManip am gemeinsamen Full-Output
+  korrigiert. Fehlversuche mit success=false erhalten, kein Firmware-/Reset-Eingriff.
+  Quelle https://docs.luxonis.com/software-v3/depthai/examples/camera/camera_still_max_res .
+- Drei gemittelte Stufen bleiben im RAM; Kamera vor CPU-Verarbeitung schließen,
+  Archive mit zwei Schreibern parallel zur unveränderten Zweithread-Fusion als
+  verlustfreie PNGs/Kompressionsstufe1 sichern. Kein erneutes PNG-Einlesen.
+  Jede Archiv-Future muss erfolgreich sein, bevor result.json akzeptiert wird.
+  PNGs können größer sein; Pixelwerte bleiben erhalten. `hdr_timing_s` erfasst
+  Acquisition, Kamerasitzung, Fusion, PNG-Zeiten und Wallclock. Parallele PNG-
+  Zeiten nicht zur Wallclock addieren. Kamera-Lease bleibt bis Ergebnis fertig.
+- Tagesaktueller alter Referenzlauf ISO400/Fokus107/2Frames je Stufe:
+  `photos/20261118-110326-hdr-083021ff/`,36,181s. Finaler schneller Pfad:
+  `110757-hdr-44f300fd`19,307s und `110853-hdr-37c99426`18,468s.
+  Im letzten Lauf Kamera9,056s, davon Einlauf2,077s und je Stufe etwa2s;
+  danach Fusion7,583s/finales PNG1,825s. Vorläufiger Lauf mit1,5s-Mindest-
+  einlauf17,559s; durch das stabilere2s-/Fünfframe-Fenster ersetzt.
+- 50 Tests/17 Subtests PASS. Neue Tests: Übergangs-/Duplikatmetadaten,
+  Timeout, Verwerfen unbestätigter Vollbilder vor Mittelung, Pflichtarchive
+  trotz fertiger Fusion und Verarbeitung vorhandener Arrays ohne PNG-Reread.
+  Native Offlineprüfung/Pixelvergleich und Kamera-Freigabenachweis unter
+  `setup/oak4/hdr_speed_20261118/`; Details validation.json/validate.py.
+  Alle zwölf PNGs aus Referenz und beiden finalen schnellen Läufen erneut als
+  native48MP dekodiert. Gespeichertes HDR stimmt pixelgenau mit erneuter
+  ursprünglicher Mertens-Fusion derselben archivierten Stufen im SDK-OpenCV5
+  überein. Erste Offlineprüfung mit System-OpenCV4.10 zeigte Versionsunterschiede;
+  danach im tatsächlichen SDK-OpenCV5 korrekt bestanden. Künftige Metadaten
+  enthalten die OpenCV-Version; Validator verlangt diese passende Laufzeit.
+  Freie Kamera-Lease unabhängig geprüft (camera-release.json).
+  Keine Roboterbewegungen oder Kalibrier-/Firmwareänderungen. Der vorhandene
+  Dienst startet den SDK-Worker aus dem Quellstand, kein Neustart nötig.
+
 ## Optionaler HDR-Fotomodus, 2026-11-17
 
 - Nutzerfeedback nach Realvergleich: HDR gefällt; Nutzer fragt nach Ursache der

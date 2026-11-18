@@ -1,6 +1,6 @@
 # OAK4: Standard-, HQ- und HDR-Fotodienst
 
-Stand: 2026-11-17, Ubuntu26.04 / ROS2 Lyrical. Für die physische Ethernet-OAK4
+Stand: 2026-11-18, Ubuntu26.04 / ROS2 Lyrical. Für die physische Ethernet-OAK4
 (`cameras.oak4` im zentralen Zellinventar) existiert **uwa-oak4-photo.service**.
 Der installierte systemd-Benutzerdienst startet bei der Benutzeranmeldung und
 wartet ohne offene Kamera auf einen Auftrag. Er arbeitet in **ROS-Domain65**
@@ -39,6 +39,37 @@ Grenzen: [OAK-Stabilitätsprüfung](OAK4_STABILITY_2026-11-13.md).
 ## Ein Foto aufnehmen
 
 ### Optional: Belichtungsreihe / HDR-artige Fusion
+
+Seit18.11. läuft `--mode hdr` automatisch über den schnelleren Pfad. Die
+bewährten Einstellungen bleiben verwendbar:
+
+```bash
+bash src/oak_camera_calibration/tools/oak4_photo.sh capture --mode hdr --focus 107 --iso 400 --frames 2
+```
+
+Bei sechs nativen48MP-Frames wurden **18,47–19,31s statt36,18s** mit dem
+vorherigen Pfad am selben Tag gemessen. Die41,07s vom17.11. sind ein früherer
+Messwert unter anderer Auslastung/Beleuchtung. Kein allgemeines Laufzeitversprechen.
+Auflösung, Mittelung, Belichtungsabstände und Mertens-Gewichte bleiben erhalten.
+
+Fokusvorgabe: mindestens2s Einlauf und fünf stabile Metadatenframes;
+Autofokus: mindestens5s. Belichtungswechsel warten auf bestätigte Einstellungen
+anstelle fester1,5s-Pausen. Kleine Metadatenbilder entstehen über ImageManip
+aus demselben8K-Ausgabestrom; jedes Vollbild wird nochmals geprüft.
+Dieses Vorgehen folgt dem [offiziellen Luxonis-8K-Beispiel](https://docs.luxonis.com/software-v3/depthai/examples/camera/camera_still_max_res).
+
+Die drei Stufen bleiben zur Fusion im RAM. Nach Schließen der Kamera werden
+sie parallel zur Fusion verlustfrei als PNG gespeichert, Kompressionsstufe1
+statt3; dadurch können die Dateien größer werden. Kein erneutes Einlesen.
+Ein Auftrag ist erst erfolgreich, wenn HDR **und alle drei Archive** fertig
+sind. Transaktionssperre bleibt bis dahin erhalten, auch wenn die physische
+Kameraverbindung schon beendet ist. Im letzten Test: Kamerasitzung9,06s,
+Fusion7,58s, finales PNG1,83s. `metadata.json` enthält `hdr_timing_s`; Zeiten
+paralleler PNG-Schreiber nicht addieren. Nachweise:
+`setup/oak4/hdr_speed_20261118/validation.json`,50Tests/17Subtests PASS.
+
+Die folgenden Hinweise zu Verfahren und Optik gelten weiter; die historischen
+Laufzeiten unten beziehen sich auf die frühere Umsetzung.
 
 ```bash
 bash src/oak_camera_calibration/tools/oak4_photo.sh capture --mode hdr --focus 107

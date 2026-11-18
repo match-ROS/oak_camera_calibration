@@ -50,6 +50,10 @@ Nur statische Szene;8-Bit-ISP-Fusion, kein RAW-HDR. Software/native synthetische
 und reale ISO100/400-Reihen geprüft. Bei aktueller Beleuchtung ist
 `--iso 400 --frames 2` ausgewogener; Schattenrauschen bleibt, kein pauschaler
 Qualitätsgewinn gegenüber HQ. Reale Vergleichsbilder/Nachweise OAK4_PHOTOS.md.
+Seit18.11. ist derselbe HDR-Aufruf beschleunigt:18,5–19,3s statt36,2s im
+aktuellen Vergleich, volle48MP und Belichtungsstufen erhalten. Readback-basierte
+Controls, Fusion aus RAM und parallele verlustfreie PNG-Archive;
+Phasenzeiten stehen in `metadata.json` unter `hdr_timing_s`.
 
 ## OAK4-D auf diesem Ubuntu-26.04-/Lyrical-Rechner
 

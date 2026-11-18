@@ -1,5 +1,13 @@
 # OAK-Kamera: Arbeitsregeln
 
+- HDR seit18.11. auf Geschwindigkeit optimiert: native48MP/Mertens und
+  Belichtungsstufen erhalten; Metadaten aus ImageManip desselben8K-ISP-Outputs,
+  keine zweite Camera-Ausgabe im8K-Modus. Controls anhand kleiner Vorschau
+  und zusätzlich jedes Vollbilds bestätigen; begrenzter Einlauf/Timeout,
+  keine blinde Übernahme unbestätigter Belichtungen. Fusion aus RAM,
+  parallele verlustfreie PNG-Level1-Archive. Timing pro Phase in metadata.json;
+  Transaktions-Lease bis zum vollständigen Ergebnis halten. OAK4_PHOTOS.md.
+
 - Optionaler HDR-Fotomodus seit17.11.: bestehenden Fotopfad `capture --mode hdr`
   nutzen; drei native Belichtungsstufen −2/0/+2EV bei festem ISO/Fokus/WB,
   Originalstufen erhalten. Mertens-Ausgabe ist ISP-Belichtungsfusion als8-Bit-PNG,
