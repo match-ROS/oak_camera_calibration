@@ -1,5 +1,77 @@
 # OAK4-Einrichtung und Live-/Grenztests
 
+## Neue Kartonpose19.11.2026, Hardwarepause
+
+- Standardfoto13:24:16/Fokus107: `setup/oak4/photos/20261119-132416-standard-a0bac111/`.
+  Karton vorgerückt/gedreht, rechtes Board nur noch4Marker sichtbar. Bestehender
+  vollständiger Kamerabezug auf aktuellen16Ecken bestätigt:1,771pxRMS.
+- Neue Objektregistrierung im Zellrepo erfolgreich, drei aktuelle unterstützte
+  Bildfits: interne2,866mm/0,682°, keine absolute Genauigkeitsbehauptung.
+  Vorschau `setup/tasks/carton_new_pose_20261119/pose-preview.jpg`.
+- Keine globale Kamera-/Basisprofiländerung, Fokus bleibt107. Nutzer stoppt
+  Roboter und erlaubt nur Vorbereitung bis Start. Keine Arm-/Greiferziele
+  für neuen Ort gesendet. Aktuelle Bedienung im Zell-HANDOVER.
+
+
+## Abschluss Kartonwiederholung auf N100,19.11.2026
+
+- Aktuelle Eintrittsprüfung12:56:19 und12:59:51 mit Fokus107, Standardmodus;
+  beide offenen Backenpaare an kurzen Wänden visuell geprüft. Abschlussfoto
+  `setup/oak4/photos/20261119-130116-standard-651f9a50/`:
+  beide Greifer geschlossen, Karton auf Tisch. Vorschau/Nahbild im Workspace
+  `setup/tasks/carton_cycle_n100_20261119/final-{preview,jaws}.jpg`.
+- N100-Griffabschluss PASS, beideOBJ2/statischerEndhalt, abschließend alle4
+  ProgrammeRUNNING/normal/stationär. NurHOLD der gemeinsamenObjektgruppe;
+  aktuelleBediengrenzen imZell-HANDOVER. VorherigerRR-STOPuntenhistorisch.
+- Keine Kamera-/Basisregistrierung global geändert, Fokus107 bestehen gelassen.
+  Keine neue Wristzentrier- oder absolute Genauigkeitsqualifikation.
+
+
+## Rechter Kartongriff19.11.: aktuelle Standardfotos
+
+- Nutzer setzt realen Kartonauftrag fort. Bestehender Fotodienst/Fokus107:
+ 10:30:39 neue Registrierung mit68Boardecken/1,562px,44/47/27Textur-Inlier,
+  Supportfit3,201/3,115/3,107px. Direkter rechter Boardbezug, feste Basisbindungen
+  unverändert. Interne Streuung0,319mm/0,060°, kein Absolutgenauigkeitsnachweis.
+- Weitere statische Fotos10:47:38 (hoch/offen),10:50:29 (beide offen eingefahren),
+ 10:52:24 (beide geschlossen/OBJ2). Letztes Foto
+  `setup/oak4/photos/20261119-105224-standard-949b772a/`; Vorschau/Nahbild
+  `setup/tasks/carton_grasp_20261119/grasp-{preview,jaws}.jpg`.
+- Während Schließen RR-Programm durch vorhandenen Ruhewächter gestoppt; alle4
+  Arme anschließend gehalten/stationär, Karton weiter auf Tisch. Keine Kamera-
+  oder Basisprofiländerung/kein Fokusrestore. Keine neue Wristzentrierung.
+  Weitere Arm-/Greifaktionen ausschließlich nach aktuellem Zell-HANDOVER;
+  Kontaktzustand nurHOLD, keine automatische Programmerholung/Öffnung.
+
+## Kartongriff: aktueller Boardbezug und Offline-Abschluss18.11.
+
+- Letztes aktuelles Standardfoto17:32:31/Fokus107 über vorhandenen Fotopfad:
+  `setup/oak4/photos/20261118-173231-standard-7c98a0ff/`. Keine globale Kamera-
+  oder Basisprofiländerung. OAK/Pose2Baseline-Kette war um3–4cm widersprüchlich;
+  neuer Taskbezug verwendet direkt das aktuell sichtbare feste rechte Board
+  und die vom Nutzer fest übernommenen Basis↔Board-Transformationen.
+-68Markerecken/1,394px. Drei Karton-Texturhypothesen28/30/26Inlier. Die sichtbare
+  Tischauflage wird explizit als Supportprior geschätzt; Prüf-RMS3,331/3,385/
+  2,950px innerhalb unveränderter Registrierungsschwellen. Positionsstreuung
+  etwa0,370mm ist interne Konsistenz, keine absolute Genauigkeitsqualifikation.
+- Wiederverwendbarer rein offline Bildbaustein im Zellrepo:
+  `tools/register_carton_from_oak.py`, native Metadaten/Fokus/Optik geprüft,
+  keine Gerätekommandos. Reproduktionsdaten `setup/tasks/carton_grasp_20261118_offline_finish/registration-v2/`.
+- Nutzer hat realen Griffversuch heute beendet und auf19.11. verschoben;
+  Software offline vorbereitet. Nach Stopp keine weiteren Foto-/Kamerazugriffe.
+  Kein Schließen/Hub ausgeführt. Aktuelle Zellübergabe und normaler Ablauf in
+  `docs/carton_supported_grasp.md` im Zellrepo; kein automatischer Morgenstart.
+
+
+> Ergebnisarchiv18.11.: ältere OAK-Aufnahmen/Tests und HDR-Vorschauen sind
+> auf beiden N100-Daten-SSDs archiviert und SHA256-geprüft. Vorschau/Suche
+> über **UWA Archiv (N100)** / http://127.0.0.1:8767; Ordner gezielt über
+> setup/archive_n100/archive.py zurückholen. Ursprüngliche Workspace-Pfade
+> bleiben als Metadaten erhalten, ausgelagerte Ordner tragen einen Hinweis.
+> Aktuelle Aufnahmen/Kalibrierungen und sämtliche Kameradienste erhalten;
+> neue Aufnahmen weiterhin im üblichen lokalen setup/oak4/-Pfad. Gesamtstand
+> und Prüfnachweise im Workspace-HANDOVER und setup/archive_n100/.
+
 ## Kartongriff: widersprüchliche Posen neu prüfen, 2026-11-18
 
 - Freigegebener Zellauftrag nutzt16:40:19 ein weiteres Standardfoto/Fokus107
