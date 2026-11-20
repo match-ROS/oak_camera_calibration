@@ -1,5 +1,76 @@
 # OAK4-Einrichtung und Live-/Grenztests
 
+## ChArUco-Suchmodus, 20.11.2026
+
+- Neuer Nutzerauftrag: aus kleiner Übersicht grobe Boardlage/Abstand/Helligkeit
+  bestimmen, danach Fokus und ggf. Belichtung für rechtes/linkes Tischboard
+  getrennt optimieren und die besten Bilder zur Kamerapose verwenden.
+  Kein Auftrag für Armbewegungen oder Kalibrieraktivierung.
+- Implementiert als `oak4_photo.sh capture --mode charuco` mit bestehender
+  Kamera-/Transaktions-Lease, SDK-Worker und lokalen Ergebnisordnern. JSON-
+  Konfiguration friert zentrale Boarddefinitionen, eigene Fokusprofile und
+  übernommene Basis↔Board-Bindungen samt Quellenhash ein.
+- Übersicht2000×1500 aus demselben8K-Ausgabestrom; sieben Fokuswerte91–123,
+  pro Board −1/0/+1EV (doppelte Zeiten durch100–90000µs-Grenzen entfernen),
+  ISO fest. Native Kontrollbilder der zwei besten Übersichtsfokuswerte und
+  ggf. eines passenden Intrinsics-Fokus. Metriken je Board-ROI: ChArUco-/Marker-
+  anzahl, kontrastnormalisierte Schärfe, helle Pixel/Clipping. Keine globale
+  Optimalitätsbehauptung. Fokus/WB/ISO/Zeit in Vorschau und Vollbild bestätigt.
+- Beste Bildaufnahme und brauchbare fokusgebundene Poseaufnahme getrennt;
+  derzeit eigenes Profil nur bei107. Andere beste Fokuswerte werden nicht
+  mit107-K/D metrisch ausgewertet. Rohe Factory-Pose nur als grobe Suchhilfe.
+  Posen mit ganzen zurückgehaltenen Markern prüfen; unveränderte übernommene
+  Basisbindungen liefern pro passendem Arm T_base_camera als Kandidat.
+  Keine gemeinsame Weltpose aus nomineller Tischgeometrie oder automatische
+  Registrierung erzeugen. Aktive Referenzen bleiben erhalten.
+- Erste reale Suche `photos/20261120-121811-charuco-0366271e/` erfolgreich:
+  beide Boards gefunden, native Auswahl beide107, passende Posekandidaten
+  vorhanden.21,75s; rechts37,165ms/links18,582ms beiISO100, je24ChArUco-Ecken/
+  17Marker; zurückgehaltener RMS1,735/1,027px.
+- Wiederholung `121950-charuco-682d3590`21,72s: bildlich rechts107/links103,
+  linke Pose korrekt aus separater107-Aufnahme. Grobe Übersichtsabstände zu
+  den Boardursprüngen etwa1,53m/2,23m, keine unabhängige Abstandsmessung.
+- Untätigen Fotodienst nach ROS-StatusIDLE neu geladen und neuen Trigger
+  `/oak4/photo/capture_charuco` vollständig geprüft: `122215-charuco-b38fa2e7`,
+  21,93s, visuelle Auswahl beide103, Belichtung rechts44,332ms/links22,166ms.
+  Wieder je24Ecken/17Marker. Metrische Poseauswahl beide107, Prüf-RMS
+  rechts1,703px/links1,077px. Rohbild bei103 bleibt mit fehlender eigener
+  Intrinsics markiert. Der Wechsel103/107 ist eine knappe Bildbewertung,
+  kein Nachweis einer physischen Boardbewegung oder globalen Fokusoptimums.
+-57Tests/17Subtests PASS. Gespeicherte native Kandidaten und passende K/D/
+  Fokus-/ID-/Posebindungen aller drei Läufe offline erneut geprüft. Einzelne
+  Marker-IDs von Fit und Gegencheck disjunkt. Vier basisbezogene Kameraposen
+  und relativer Zweiboard-Kandidat exportiert; nichts aktiviert.
+  Prüfskript/JSON/Vergleich `setup/oak4/charuco_validation_20261120/`.
+  `.capture.lock` nach Abschluss unabhängig erworben, Kamera12:23:35+08:00
+  frei bestätigt. Keine Arm-/Greiferbefehle, keine Firmware-/EEPROMänderung.
+
+## Karton-Weblauf am Kamerabezug abgebrochen, 20.11.2026
+
+- Native Standardaufnahme `20261120-114332-standard-5eaef2a5` mit Fokus 107.
+  Das teilweise sichtbare rechte Tischboard lieferte 16 Ecken. Die vollständige
+  Kamerareferenz vom 19.11. lag bei 3,988 px RMS und 5,377 px Maximalfehler
+  über der laufenden Prüfung von <2 und <4 px. Karton-Textursuche wurde nicht
+  erreicht.
+- Gegenüber der Aufnahme vom 19.11. um 18:31 verschoben sich die gemeinsamen
+  Markerecken beider Boards etwa 3,5 bis 3,8 px nach rechts. Der Vergleich
+  zeigt eine gemeinsame Änderung im Bild, deren physische Ursache offen ist.
+  Aktuelle vollständige Kameraregistrierung setzt mindestens 48 sichtbare
+  Ecken des rechten Boards voraus. Rohlog `setup/tasks/carton_board_reference_20261120/`.
+- Auf Nutzerfrage zu Temperatur. Bei fx 5832 px und Znäherung 1,334 m
+  entsprechen 3,54 px horizontal rund 0,035 Grad Winkel oder 0,81 mm
+  Querbewegung, abhängig vom angenommenen Modell. Die Bilder enthalten
+  keine Temperaturmessung. `white_balance_K` ist die Lichtfarbe. Eine
+  modellierte reine Absenkung um 0,47 mm verursacht am rechten Board ca.
+  −0,02 px horizontal und −1,08 px vertikal. Ein kleiner Kippwinkel bleibt
+  geometrisch plausibel. Thermische Ursache ist offen.
+- Die aus früheren gemeinsamen Aufnahmen bestimmte Position des linken
+  Boards reicht für einen automatischen Ersatzbezug zurzeit nicht aus.
+  Der beste unabhängige Gegencheck am rechten Board ergab 2,84 px RMS und
+  5,52 px Maximalfehler. Für eine robustere Registrierung dauerhaft gut
+  verteilte rechte Markerecken außerhalb der Kartonüberdeckung sichtbar
+  halten. Archivnachweis `setup/tasks/carton_board_reference_20261120/two-board-diagnostic.json`.
+
 ## Neue Kartonpose19.11.2026, Hardwarepause
 
 - Standardfoto13:24:16/Fokus107: `setup/oak4/photos/20261119-132416-standard-a0bac111/`.

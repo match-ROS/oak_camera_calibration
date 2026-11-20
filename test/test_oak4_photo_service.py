@@ -6,6 +6,7 @@ from pathlib import Path
 import signal
 import subprocess
 import tempfile
+import sys
 import unittest
 from unittest.mock import Mock, patch
 
@@ -16,6 +17,33 @@ spec.loader.exec_module(service)
 
 
 class TransactionTests(unittest.TestCase):
+    def test_charuco_dispatch_uses_frozen_config_and_exports_board_results(self):
+        self.configure()
+        calls = []
+        def start(command, **kwargs):
+            calls.append(command)
+            output = Path(command[command.index('--output')+1])
+            (output/'metadata.json').write_text(json.dumps(dict(success=True,
+                summary=dict(both_boards_found=True), boards=dict(right=dict(status='FOUND',
+                    best=dict(path='right/focus107.png'), pose_selection=dict(path='right/focus107.png'))))))
+            return Mock(wait=Mock(return_value=0))
+        with patch.dict(sys.modules, {'oak4_charuco': Mock(freeze_config=Mock(return_value={'frozen': True}))}), \
+             patch.object(service.subprocess, 'run', return_value=Mock(returncode=3)), \
+             patch.object(service.subprocess, 'Popen', side_effect=start):
+            result = self.capture.capture(mode='charuco')
+        self.assertNotIn('--mode', calls[0])
+        self.assertIn('--search-config', calls[0])
+        self.assertEqual(calls[0][calls[0].index('--frames')+1], '1')
+        self.assertIn('right', result['images'])
+        self.assertIn('right', result['pose_directories'])
+        self.assertTrue((Path(result['directory'])/'search-config.json').exists())
+
+    def test_charuco_rejects_conflicting_fixed_focus_or_stacking(self):
+        for options in (dict(focus=107), dict(frames=2)):
+            with self.assertRaises(ValueError):
+                self.capture.capture(mode='charuco', **options)
+        self.assertFalse(self.capture.root.exists())
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

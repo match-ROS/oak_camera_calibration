@@ -46,5 +46,5 @@ EOF
   capture)
     shift
     exec /usr/bin/python3 "$script_dir/oak4_photo_service.py" capture "$@" ;;
-  *) echo "Usage: bash $0 {check [--count 3] [--focus 116]|view-depth [--capture DIRECTORY]|install|start|stop|restart|status|logs|capture [--mode hq|standard|compare|hdr|depth_hq|depth_standard|depth_compare|rgbd] [--frames N] [--iso 100] [--focus 0..255]}" ;;
+  *) echo "Usage: bash $0 {check [--count 3] [--focus 116]|view-depth [--capture DIRECTORY]|install|start|stop|restart|status|logs|capture [--mode hq|standard|compare|hdr|charuco|depth_hq|depth_standard|depth_compare|rgbd] [--frames N] [--iso 100] [--focus 0..255] [--search-config JSON]}" ;;
 esac

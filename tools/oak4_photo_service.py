@@ -32,15 +32,20 @@ class PhotoCapture:
         with self.state_mutex:
             self.state.update(kwargs)
 
-    def capture(self, mode='hq', frames=None, iso=100, focus=None):
+    def capture(self, mode='hq', frames=None, iso=100, focus=None, search_config=None):
         depth = mode.startswith('depth_')
         rgbd = mode == 'rgbd'
-        frames = (16 if depth else 1 if mode == 'hdr' else 8) if frames is None else frames
-        modes = ('standard', 'hq', 'compare', 'hdr', 'depth_standard', 'depth_hq', 'depth_compare', 'rgbd')
+        charuco = mode == 'charuco'
+        frames = (16 if depth else 1 if mode in ('hdr', 'charuco') else 8) if frames is None else frames
+        modes = ('standard', 'hq', 'compare', 'hdr', 'charuco', 'depth_standard', 'depth_hq', 'depth_compare', 'rgbd')
         if mode not in modes or type(frames) is not int or not (4 if depth else 1) <= frames <= 32 or not 100 <= iso <= 1600:
             raise ValueError('Invalid mode, frames (RGB 1..32, depth 4..32) or ISO (100..1600)')
         if mode == 'hdr' and frames > 8:
             raise ValueError('HDR supports 1..8 frames per exposure')
+        if charuco and (frames != 1 or focus is not None):
+            raise ValueError('ChArUco searches focus automatically; frames must be1 and --focus omitted')
+        if search_config is not None and not charuco:
+            raise ValueError('--search-config requires --mode charuco')
         if depth and iso != 100:
             raise ValueError('--iso controls RGB only; depth uses locked mono auto-exposure')
         if rgbd and iso != 100:
@@ -78,12 +83,17 @@ class PhotoCapture:
                 directory = data_root / f'{stamp}-{mode}-{uuid.uuid4().hex[:8]}'
                 directory.mkdir()
                 self.update(phase='CAPTURING', mode=mode, directory=str(directory), error=None)
-                worker = ('oak4_rgbd_capture.py' if rgbd else
+                worker = ('oak4_charuco_capture.py' if charuco else 'oak4_rgbd_capture.py' if rgbd else
                           'oak4_depth_capture.py' if depth else 'oak4_photo_capture.py')
                 command = [str(oakctl), 'run-script', str(sdk), '-u', str(TOOLS / worker),
                            '--ip', ip, '--device-id', str(camera.get('device_id', '')),
                            '--output', str(directory), '--frames', str(frames)]
-                if rgbd:
+                if charuco:
+                    from oak4_charuco import freeze_config
+                    frozen_path = directory / 'search-config.json'
+                    frozen_path.write_text(json.dumps(freeze_config(self.workspace, search_config), indent=2)+'\n')
+                    command.extend(['--search-config', str(frozen_path)])
+                elif rgbd:
                     command.extend(['--focus', str(116 if focus is None else focus)])
                 else:
                     command.extend(['--mode', mode.removeprefix('depth_')])
@@ -116,6 +126,14 @@ class PhotoCapture:
                 if mode == 'hdr':
                     result['brackets'] = {step['name']: str(directory / step['path'])
                                           for step in report['hdr_brackets']}
+                if charuco:
+                    result['search_summary'] = report['summary']
+                    result['images'].update({side: str(directory / row['best']['path'])
+                        for side, row in report['boards'].items() if row['status'] == 'FOUND'})
+                    if report.get('overview'):
+                        result['images']['overview'] = str(directory / report['overview']['path'])
+                    result['pose_directories'] = {side: str(directory / side / 'pose')
+                        for side, row in report['boards'].items() if row.get('pose_selection')}
                 (directory / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
                 self.update(phase='READY', last_result=result, error=None)
                 return result
@@ -172,7 +190,7 @@ def serve(capture):
             return response
         return take
 
-    for mode in ('hq', 'standard', 'compare', 'hdr'):
+    for mode in ('hq', 'standard', 'compare', 'hdr', 'charuco'):
         node.create_service(Trigger, f'photo/capture_{mode}', callback(mode), callback_group=group)
     node.create_service(Trigger, 'photo/status', snapshot, callback_group=group)
     for mode in ('hq', 'standard', 'compare'):
@@ -180,7 +198,7 @@ def serve(capture):
     node.create_service(Trigger, 'depth/status', snapshot, callback_group=group)
     executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
-    node.get_logger().info('READY: /oak4/photo/capture_hq, capture_standard, capture_compare, capture_hdr; /oak4/depth/capture_hq, capture_standard, capture_compare; status (domain65)')
+    node.get_logger().info('READY: /oak4/photo/capture_hq, capture_standard, capture_compare, capture_hdr, capture_charuco; /oak4/depth/capture_hq, capture_standard, capture_compare; status (domain65)')
     try:
         executor.spin()
     except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):
@@ -195,17 +213,18 @@ def serve(capture):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('serve', 'capture'))
-    parser.add_argument('--mode', choices=('hq', 'standard', 'compare', 'hdr', 'depth_hq', 'depth_standard', 'depth_compare', 'rgbd'), default='hq')
-    parser.add_argument('--frames', type=int, default=None, help='Defaults: RGB 8, HDR 1 per exposure (max 8), depth 16')
+    parser.add_argument('--mode', choices=('hq', 'standard', 'compare', 'hdr', 'charuco', 'depth_hq', 'depth_standard', 'depth_compare', 'rgbd'), default='hq')
+    parser.add_argument('--frames', type=int, default=None, help='Defaults: RGB 8, HDR 1 per exposure (max 8), ChArUco 1 per hypothesis, depth 16')
     parser.add_argument('--iso', type=int, default=100)
     parser.add_argument('--focus', type=int, default=None, help='RGB manual lens position 0..255; omit for autofocus')
+    parser.add_argument('--search-config', type=Path, help='ChArUco search JSON; defaults to config/oak4_charuco_search.json')
     args = parser.parse_args()
     capture = PhotoCapture()
     if args.action == 'serve':
         serve(capture)
     else:
         try:
-            print(json.dumps(capture.capture(args.mode, args.frames, args.iso, args.focus), indent=2))
+            print(json.dumps(capture.capture(args.mode, args.frames, args.iso, args.focus, args.search_config), indent=2))
         except Exception as error:
             parser.exit(1, f'FAILED: {error}\n')
 

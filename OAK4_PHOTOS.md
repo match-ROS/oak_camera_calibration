@@ -1,5 +1,10 @@
 # OAK4: Standard-, HQ- und HDR-Fotodienst
 
+Zusätzlich seit20.11.: [ChArUco-Suchmodus](OAK4_CHARUCO_SEARCH.md) über
+`capture --mode charuco` bzw. `/oak4/photo/capture_charuco`. Übersicht und
+boardweise Fokus-/Belichtungssuche mit nativen Bildern/Posekandidaten;
+derselbe Dienst, dieselbe Kamera-Lease.
+
 Stand: 2026-11-18, Ubuntu26.04 / ROS2 Lyrical. Für die physische Ethernet-OAK4
 (`cameras.oak4` im zentralen Zellinventar) existiert **uwa-oak4-photo.service**.
 Der installierte systemd-Benutzerdienst startet bei der Benutzeranmeldung und

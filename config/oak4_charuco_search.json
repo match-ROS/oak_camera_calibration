@@ -1,0 +1,9 @@
+{
+  "layout": "src/multi_arm_manipulation_UWA/uwa_cell_description/config/cell_layout.yaml",
+  "focus_candidates": [91, 99, 103, 107, 111, 115, 123],
+  "exposure_offsets_ev": [-1, 0, 1],
+  "intrinsics_by_focus": {
+    "107": "setup/calibration/oak_capture_proposal_20261118/calibration_candidate_v1/oak_focus107_intrinsics_candidate.json"
+  },
+  "base_bindings": "src/multi_arm_manipulation_UWA/uwa_cell_description/config/calibration/hardware_20261118_base_fixed_v1/base_bindings.json"
+}

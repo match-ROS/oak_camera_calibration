@@ -1,5 +1,15 @@
 # OAK-Kamera: Arbeitsregeln
 
+- Nutzerauftrag20.11.: zusätzlicher ChArUco-Suchmodus über vorhandenen Fotopfad,
+  `capture --mode charuco`. Kleine Übersicht, Fokus-/Belichtungsreihe und
+  gezielte native Aufnahme je festem Tischboard; über Marker-IDs unterscheiden,
+  nicht über Bildseite. Bildlich beste Aufnahme und zum Fokusprofil passende
+  Poseaufnahme getrennt ausweisen. Nur passende physische ID/Fokus/Auflösung-
+  K/D für metrische Posen verwenden, Factory-/fokusfremde Pose nur grob.
+  Existierende feste Basisbindungen erhalten; Kamera-Posekandidaten nicht
+  automatisch aktivieren. Konfiguration config/oak4_charuco_search.json;
+  pro Auftrag Quellen einfrieren. OAK4_CHARUCO_SEARCH.md beschreibt Grenzen.
+
 - HDR seit18.11. auf Geschwindigkeit optimiert: native48MP/Mertens und
   Belichtungsstufen erhalten; Metadaten aus ImageManip desselben8K-ISP-Outputs,
   keine zweite Camera-Ausgabe im8K-Modus. Controls anhand kleiner Vorschau

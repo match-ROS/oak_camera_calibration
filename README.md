@@ -1,5 +1,12 @@
 # oak_camera_calibration
 
+**ChArUco-Suchmodus** seit20.11.:
+`bash src/oak_camera_calibration/tools/oak4_photo.sh capture --mode charuco`.
+Kleine Übersicht, Fokusreihe und separate Belichtung je festem Tischboard,
+native Kontrollbilder und passende fokusgebundene Posepakete. Beste Bild- und
+Poseaufnahme können verschieden sein; keine automatische Kalibrieraktivierung.
+[Bedienung, Dateien und Realnachweis](OAK4_CHARUCO_SEARCH.md).
+
 Gemeinsame [entzerrte RGB-D-Aufnahme](OAK4_RGBD.md) seit16.11.2026:
 `bash src/oak_camera_calibration/tools/oak4_photo.sh capture --mode rgbd`.
 Acht zeitlich gepaarte RGB-/Tiefenbilder im gleichen1280×960-Bildgitter,
