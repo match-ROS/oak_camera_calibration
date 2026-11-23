@@ -1,5 +1,90 @@
 # OAK4-Einrichtung und Live-/Grenztests
 
+## Zweite OAK am N100 montiert: Ausrichtung,23.11.2026
+
+- Nutzer hat USB-OAK am zweiten Tisch gegenüber der Ethernet-OAK4 montiert
+  und beauftragt Vollbild, Orientierung und anschließende Kalibrierung.
+  Präzisiert: beide Tischboards und gemeinsamer Arbeitsraum sollen sichtbar
+  sein. Keine Freigabe für Roboterbewegungen daraus ableiten.
+- N100 erreichbar unter vorhandenem `uwa-n100-robot-lan`; kein laufender
+  Kameranutzer entdeckt. Neuer wiederverwendbarer nativer Fotopfad
+  `tools/usb_oak_photo.py` im eigenen N100-Kameraordner, vorhandene Lease.
+  Tatsächliche USB-ID18443010314F3B1300/RVC2/IMX378,4056×3040 bestätigt.
+- Aufnahme01 um11:38AWST: Autofokusreadback0, stark unscharf. Aufnahme
+  `20261123-mounted-native-focus126` um11:39AWST mit bestätigtem126 deutlich
+  schärfer; native Datei erneut dekodiert. USB-Link aktuellHIGH/USB2,
+  SDK3.12.1/OpenCV5.1.0. Factory-Kalibrierung vor/nach identisch
+  (SHA256ff9cf44e179220f19e5fed4af8030e47aa8272c090cb5c14e91fa8ea7ab78412),
+  Kamera geschlossen/Lease freigegeben. Kein Firmware-/EEPROM-/UR-Eingriff.
+- Beide Dateien unter `setup/n100/ros-camera/captures/` am Arbeitsplatz und
+  `~/uwa-camera/results/` auf N100. Autofokusversuch bleibt erhalten; neuer
+  Fotopfad nimmt standardmäßig den ausgelesenen Werksfokus statt0. Noch kein
+  Optimumbeweis; native Markermuster auch bei126 weich, Standarddetektion0
+  pro festem Board. Keine metrische Pose akzeptiert oder aktiviert.
+- Ausgangsbild: viel Hintergrund oben, nahes Board unten außerhalb der Sicht.
+  Nutzer hat anschließend steiler nach unten ausgerichtet und dafür kopfüber
+  montiert (23.11.). Native Fokussuche96/112/128/144/160/176 in der neuen
+  Montage gestartet. Rohbilder für Poseberechnung unverändert,180°-Ansicht nur
+  als gekennzeichnete Anzeige. OAK4-Referenz bleibt unberührt.
+- Gemeinsamer Board-Posebaustein berücksichtigt nun die tatsächliche native
+  Profilauflösung statt stets8000×6000. Bestehende OAK4-Rechnung unverändert;
+  sechs gezielte Kameratests einschließlich synthetischer USB-4056-Pose PASS.
+- Neue Montage12:28–12:29AWST real geprüft: Dataset
+  `20261123-remounted-inverted-focus-scan-01`, native Referenz126 plus
+ 96/112/128/144/160/176, jede Stellung bestätigt. Bei112 deutliche Verbesserung:
+  rechtes/fernes Board17Marker/24ChArUco-Ecken, linkes/nahes13Marker/17Ecken;
+  bei126 nur2/0Marker. Gleiche Belichtung/ISO/WB ab112 (19993µs/ISO147/3800K);
+  Referenz126 und96 liefen noch mit abweichender Automatik. Kein reiner
+  Fokusvergleich aller Frames oder globales Fokusoptimum behauptet.
+- Kopfüber-Montage ist kein grundsätzlicher Kalibrierungsblocker. Raw-Pixel-
+  orientierung erhalten; `right-best-upright-preview.jpg` ist explizit180°
+  gedrehte Anzeige von `focus-112.png`, Kennzeichnung in `display-view.json`.
+  Die Montageverdrehung muss in eigenen Extrinsics erfasst werden. Keine
+  Software-Bildflip-/Stereo-/Werkskalibrieränderung durchgeführt.
+- Neue Sicht deutlich besser, nahes Board unten noch angeschnitten. Weitere
+  ungefähr5° Neigung nach unten vorgeschlagen; Nutzerentscheidung ausstehend.
+  Für Fokus112 liegt noch keine eigens geprüfte Intrinsics-Kalibrierung vor;
+  Factory126-K/D nicht als präzise112-Optik übernehmen. Kein Poseprofil aktiviert.
+- Kamera nach Suchreihe geschlossen und Lease freigegeben, Factory-Hash vor/
+  nach unverändert. Auswertung/Ansichten lokal aufROSmini; N100 nur Aufnahme.
+- Nutzer hat erneut nach unten nachgestellt. Kontrollfoto12:36AWST,
+  `20261123-remounted-inverted-final-view-01`,4056×3040/Fokus112:
+  beide Tischboards jetzt vollständig mit Rand sichtbar. Empfehlung:
+  diese Orientierung zunächst beibehalten, keine weitere Verstellung nötig.
+  Links und rechts je17Marker/24ChArUco-Ecken. Rechtes Board im bekannten
+  Ausschnitt ausgewertet; Vollbilddetektion lieferte zusätzlich eine falsche
+  doppelte ID63 auf der getrennten Robotiq-Schachbrettvorlage außerhalb des
+  Boards. Diese nicht in eine Kalibrierung übernehmen. ROI-Befund in
+  `board-check.json`;180°-Anzeige `upright-preview.jpg`.
+  Noch keine neue Fokus112-Intrinsics oder Extrinsics aktiviert. Kamera zu,
+  Lease frei und Factory vor/nach identisch laut Aufnahmebericht.
+
+## Library-Programm für12h-Kamerareferenz,20.11.2026
+
+- Nutzer wünscht den Suchdienst als eigenes Library-Programm. Im Zellrepo
+  `oak4-camera-calibration-v1` / **OAK4 camera calibration** ergänzt: rechte
+  ChArUco-Pose mit passendem Fokusprofil übernehmen und gemeinsame Referenz
+  zwölf Stunden ab Aufnahme veröffentlichen. Vorhandene Verbraucher nutzen
+  dieselbe `setup/skill_library/carton-camera-session.json` weiter.
+- Dienst bleibt Kamera-only; kein intrinsisches Profil neu fitten und keine
+  globale Basis-/Kamerakalibrierung überschreiben. Nutzerstart dieses Programms
+  veröffentlicht ausdrücklich die zeitgebundene Sitzung. Bedienung/Nachweise
+  im Zellrepo docs/camera_library_program.md und HANDOVER.md.
+- Neuer Library-Lauf `043a0df2880b41a69d08370275014118` erfolgreich:
+  17rechte Marker/1,53px Prüf-RMS. Gemeinsame Referenz gültig20.11.17:50:42
+  bis21.11.05:50:42 AWST. Beide Katalogprogramme verwenden denselben Zeitraum;
+  Kamera anschließend frei. Beleg `setup/tasks/camera_library_program_20261120/verified.json`.
+
+## ChArUco-Referenz im Kartonprogramm, 20.11.2026
+
+- **Calibrate OAK4** in der Zellbibliothek ruft den vorhandenen Suchmodus
+  auf. Das Zellprogramm übernimmt die geprüfte rechte Pose mit passenden
+  Intrinsics in eine zwölf Stunden gültige Kamera-Referenz für den
+  Kartonablauf. Der Fotomodus erzeugt weiterhin seine eigenen Posepakete.
+- Erste Sitzung aus `20261120-123535-charuco-d89f512a`, 17 rechte Marker,
+  1,606 px Prüf-RMS bei Fokus 107. Gültig bis 21.11.2026 00:35:55 AWST.
+  [Nachweis](../../setup/tasks/carton_camera_session_20261120/report.md)
+
 ## ChArUco-Suchmodus, 20.11.2026
 
 - Neuer Nutzerauftrag: aus kleiner Übersicht grobe Boardlage/Abstand/Helligkeit

@@ -1,5 +1,9 @@
 # oak_camera_calibration
 
+USB-OAK am N100 seit23.11. am zweiten Tisch montiert: native4056×3040-Fotos
+über `tools/usb_oak_photo.py`, getrennte USB-ID und gemeinsame N100-Kamerasperre.
+[Bedienung, Fokus und Ausrichtung](N100_USB_PHOTOS.md).
+
 **ChArUco-Suchmodus** seit20.11.:
 `bash src/oak_camera_calibration/tools/oak4_photo.sh capture --mode charuco`.
 Kleine Übersicht, Fokusreihe und separate Belichtung je festem Tischboard,

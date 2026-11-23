@@ -95,7 +95,7 @@ class Board:
                           charuco_pixels=(cc.reshape(-1, 2)+[x, y]).tolist())
         return result
 
-    def pose(self, observation, profile, image_size=(8000, 6000)):
+    def pose(self, observation, profile, image_size=None):
         """Fit marker corners; hold out whole markers to avoid neighbouring-corner leakage."""
         ids = observation['marker_ids']
         if len(ids) < 4:
@@ -106,7 +106,9 @@ class Board:
         if fit.sum() < 8 or np.min(np.ptp(objects[fit, :2], axis=0)) < .02:
             return dict(status='INSUFFICIENT_DISTRIBUTION')
         k = np.array(profile['K'], np.float64).copy()
-        sx, sy = image_size[0]/8000, image_size[1]/6000
+        native_size = profile.get('image_size', (8000, 6000))
+        image_size = native_size if image_size is None else image_size
+        sx, sy = image_size[0]/native_size[0], image_size[1]/native_size[1]
         k[0] *= sx; k[1] *= sy
         k[0, 2] += (sx-1)/2; k[1, 2] += (sy-1)/2
         d = np.array(profile['D'], np.float64)

@@ -56,6 +56,18 @@ class SearchTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 search.validate_config(dict(focus_candidates=[107], exposure_offsets_ev=[0], intrinsics={'107': profile}))
 
+    def test_usb_native_intrinsics_are_not_scaled_as_oak4(self):
+        board = search.Board(CONFIG, 'left')
+        k = np.array([[3089., 0, 2021.], [0, 3089., 1535.], [0, 0, 1]])
+        r, t = np.array([.3, -.2, .1]), np.array([-.2, -.1, 1.8])
+        obj = np.concatenate(board.board.getObjPoints()).astype(np.float64)
+        uv = cv2.projectPoints(obj, r, t, k, np.zeros(5))[0].reshape(-1, 4, 2)
+        pose = board.pose(dict(marker_ids=board.marker_ids, marker_pixels=uv.tolist()),
+                          dict(K=k, D=np.zeros(5), image_size=[4056, 3040]))
+        self.assertTrue(pose['image_check_passed'])
+        self.assertEqual(pose['image_size'], [4056, 3040])
+        np.testing.assert_allclose(np.array(pose['T_camera_board'])[:3, 3], t, atol=1e-6)
+
     def test_missing_board_cannot_outrank_a_detected_board(self):
         board = search.Board(CONFIG, 'left')
         empty = board.observe(np.full((200, 300, 3), 255, np.uint8))

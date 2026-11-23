@@ -1,5 +1,21 @@
 # OAK-Kamera: Arbeitsregeln
 
+- Seit23.11. USB-OAK-D-Pro-AF am N100 gegenüber der OAK4 am zweiten Tisch
+  montiert. Nutzerziel: beide festen Boards und gemeinsamer Arbeitsraum.
+  Physische Ausrichtung durch Nutzer, danach eigene Fokus-/Posekalibrierung;
+  nicht mit OAK4-ID/Intrinsics/aktiver Referenz vermischen. Native Fotos über
+  `tools/usb_oak_photo.py`, N100`~/uwa-camera/.camera.lock` erhalten.
+  Anleitung N100_USB_PHOTOS.md. Erste Bilder4056×3040, Werksfokus126.
+  Nutzerkorrektur23.11.: steiler nach unten und dafür kopfüber montiert.
+  Rohbilder für Kalibrierung unverändert lassen; eine180°-Drehung zunächst
+  ausschließlich für die Anzeige erzeugen/kennzeichnen. Extrinsics aus der
+  endgültigen Montage neu bestimmen, alte Pose nicht durch Bilddrehen ersetzen.
+
+- Explizites Library-Programm seit20.11.: **OAK4 camera calibration** ruft den
+  Suchdienst auf und veröffentlicht dessen geprüften rechten Boardbezug als
+  gemeinsame12h-Sitzung für Verbraucher. Der Suchdienst selbst aktiviert keine
+  globalen Profile. Bedienung im Zellrepo docs/camera_library_program.md.
+
 - Nutzerauftrag20.11.: zusätzlicher ChArUco-Suchmodus über vorhandenen Fotopfad,
   `capture --mode charuco`. Kleine Übersicht, Fokus-/Belichtungsreihe und
   gezielte native Aufnahme je festem Tischboard; über Marker-IDs unterscheiden,
