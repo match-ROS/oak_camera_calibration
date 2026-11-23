@@ -3,8 +3,11 @@
 - Seit23.11. USB-OAK-D-Pro-AF am N100 gegenüber der OAK4 am zweiten Tisch
   montiert. Nutzerziel: beide festen Boards und gemeinsamer Arbeitsraum.
   Physische Ausrichtung durch Nutzer, danach eigene Fokus-/Posekalibrierung;
-  nicht mit OAK4-ID/Intrinsics/aktiver Referenz vermischen. Native Fotos über
-  `tools/usb_oak_photo.py`, N100`~/uwa-camera/.camera.lock` erhalten.
+  nicht mit OAK4-ID/Intrinsics/aktiver Referenz vermischen. Nutzerwunsch
+  23.11.: In der interaktiven Sechskamera-GUI die USB-Kamera während der
+  Sitzung offen halten und nur auf Klick ein natives Bild speichern.
+  Dafür `tools/usb_oak_board_stream.py` nutzen. Eigenständige Einzelbilder
+  über `tools/usb_oak_photo.py`, gemeinsame N100-Lease erhalten.
   Anleitung N100_USB_PHOTOS.md. Erste Bilder4056×3040, Werksfokus126.
   Nutzerkorrektur23.11.: steiler nach unten und dafür kopfüber montiert.
   Rohbilder für Kalibrierung unverändert lassen; eine180°-Drehung zunächst

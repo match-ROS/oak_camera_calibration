@@ -5,6 +5,31 @@ RVC2/IMX378. Von der Ethernet-OAK4 mitID1479883285 getrennt. Nutzer hat sie
 am zweiten Tisch gegenüber der OAK4 montiert; Ziel sind beide festen
 Tischboards und der gemeinsame Arbeitsraum.
 
+## Gemeinsame Aufnahme-GUI
+
+Die **UWA Camera Capture** öffnet im interaktiven Sechskamera-Modus einen
+dauerhaften USB-Stream am N100. Der Worker `tools/usb_oak_board_stream.py`
+nutzt die USB-Kamera mit Fokus 112, nativen 4056×3040 Pixeln und gemeinsamer
+`~/uwa-camera/.camera.lock`. Die Vorschau mit 1280×960 entsteht aus den
+laufenden Vollbildern. Bis zum Klick hält der Worker Bilder nur im RAM.
+
+**Capture** wählt das nächste native Bild, dessen Belichtung nach Eingang
+der Anforderung am N100 beginnt. Die GUI erhält die Bildbestätigung, während
+der Hintergrund das PNG verlustfrei kodiert und über die bestehende SSH-Verbindung
+nach ROSmini überträgt. `image.png`, die Vorschau und die Metadaten liegen im
+Aufnahmeordner. Nur die Bildschirmanzeige wird um 180° gedreht. Am Sitzungsende
+vergleicht der Worker die gelesene Werkskalibrierung, schließt die Kamera und
+gibt die Lease frei. Das eigenständige Einzelbildwerkzeug ist unten beschrieben.
+
+Am 23.11. wurden in derselben echten Sitzung zwei Fotos gemessen. Der einmalige
+Start bis zur ersten Vorschau dauerte 6,42 s. Vom Auftrag am Arbeitsplatz bis
+zur Bestätigung des frischen Bilds vergingen 0,84 und 0,81 s, bis zur lokal
+gespeicherten Aufnahme mit Metadaten 3,04 und 2,95 s. Der Sensor begann die
+Belichtung 0,28 und 0,24 s nach dem jeweiligen Auftragseingang am N100.
+Der USB-Link lief dabei mit USB 2.0. Nach beiden Bildern lief die Vorschau
+weiter, am Ende wurde die Freigabe der Kamera-Lease geprüft.
+[Messung](../../setup/calibration/mobile_volume_20261123/usb-stream-mg8zkgy2/summary.json)
+
 ## Aufnahme
 
 Wiederverwendbares Werkzeug `tools/usb_oak_photo.py`, installiert auf N100

@@ -15,6 +15,24 @@ Der gleiche Dienst bietet zusätzlich [statische HQ-Tiefendaten](OAK4_DEPTH.md)
 über `/oak4/depth/capture_hq` bzw. CLI `--mode depth_hq` an. RGB und Tiefe
 verwenden eine gemeinsame Kamerasperre.
 
+In der Sechskamera-GUI teilen Vorschau und Einzelbild eine native
+8000×6000-Pipeline. Der einmalige Einlauf findet beim Öffnen der Vorschau
+statt. Für die Dauer der Sitzung bleibt der Fokus auf 107 und der
+Weißabgleich auf dem eingemessenen Wert. Die Belichtungsautomatik bleibt
+aktiv. Auf einen Klick fordert der Worker ein neues Vollbild an und prüft
+anhand des SDK-Zeitstempels, dass dessen Belichtung nach dem Trigger begonnen
+hat. Die GUI erhält die Aufnahmebestätigung vor dem PNG-Schreiben.
+Zeitstempel, tatsächlich gemeldete Optik und Gerätekalibrierung stehen im
+Kameradatensatz. **Release cameras** und das Beenden der GUI geben die
+gemeinsame Kamera-Lease frei.
+
+Am 23.11. wurden in einer warmen Sitzung zwei native Einzelbilder geprüft.
+Vom lokalen Trigger bis zum am Host bestätigten Bild vergingen 0,64 und 0,74 s,
+bis zum fertigen verlustfreien PNG 2,48 und 2,83 s. Die Vorschau hatte
+2000×1500 Pixel bei nominell 2 fps. Beide nativen PNGs wurden erneut
+dekodiert und die Freigabe der Kamera wurde geprüft.
+[Messdaten des OAK4-Einzeltests](../../setup/calibration/six_camera_speed_20261123/oak4-2gfcm6te/validation.json)
+
 Seit16.11. zusätzlich gemeinsamer [RGB-D-CLI-Modus](OAK4_RGBD.md): `--mode rgbd`
 mit entzerrter Farbe und darauf ausgerichteter, zeitlich gepaarter Tiefe.
 Er nutzt dieselbe Sperre; bestehende ROS-Trigger bleiben unverändert.

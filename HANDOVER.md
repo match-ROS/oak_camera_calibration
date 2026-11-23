@@ -1,5 +1,66 @@
 # OAK4-Einrichtung und Live-/Grenztests
 
+## Vier Beobachtungsposen erreicht, gemeinsame GUI offen, 23.11.2026
+
+- Abschluss der seriellen UR-Anfahrten: alle vier berechneten Ziele real
+  erreicht. Gemeinsame Kamera-GUI seit14:39:53AWST aufROSmini sichtbar;
+  alle sechs frischen Livebilder ab14:40:10AWST bestätigt, keine Kamerafehler.
+  Sitzung`setup/calibration/six_camera_mobile/20261123_143953_b34a17a2/`,
+  Dienst`uwa-camera-capture-six-20261123.service`. Eigener Fensternachweis
+  `setup/calibration/mobile_volume_20261123/six-camera-live.png`.
+- USB-Anzeige180°, native Messkoordinaten/Rohbilder ungedreht. Noch keine
+  neue Intrinsics/Extrinsics oder zwölfstündige Referenz aktiviert. Während
+  Live besitzt die GUI ihre Kamera-Leases; Pause/Schließen gibt sie frei.
+  Ausführungsnachweis im Zellrepo`work/mobile_board_observation_20261123.md`.
+
+## Warmes natives Einzelbild in der Sechskamera-GUI, 23.11.2026
+
+Die Ethernet-OAK4 liefert Vorschauen und native Fotos während einer
+GUI-Sitzung aus derselben 48-MP-Pipeline. Ein Geräte-Trigger fordert ein
+neues Bild an. Der Host prüft die SDK-Zeit für den Belichtungsbeginn und
+bestätigt das empfangene Vollbild vor dem PNG-Schreiben. Die bisherige
+Dateisperre gilt für die gesamte Sitzung.
+
+Zwei echte Auslösungen bei Fokus 107 und 25 ms Belichtung ergaben 0,225 und
+0,317 s bis zum Belichtungsbeginn, 0,644 und 0,741 s bis zur Bestätigung am
+Host sowie 2,484 und 2,826 s bis zum gespeicherten PNG. Beide Dateien
+ließen sich nativ als 8000×6000 dekodieren, die Gerätenummer stimmte und
+die Kamerasperre war nach Ende der Sitzung frei. Dies sind Einzelmessungen
+der Ethernet-OAK4. [Rohdaten und Prüfergebnis](../../setup/calibration/six_camera_speed_20261123/oak4-2gfcm6te/validation.json)
+
+## Warme native USB-OAK-Aufnahme, 23.11.2026
+
+Der neue Worker `~/uwa-camera/usb_oak_board_stream.py` läuft auf dem N100
+während der interaktiven Sechskamera-Sitzung. Er liefert eine verkleinerte
+Vorschau und hält den nativen 4056×3040-Stream offen. Auf Klick bestätigt
+er die nächste frische Belichtung und sendet das PNG nach ROSmini. Die
+eigenständige Aufnahme ohne offene Sitzung nutzt weiter den Einzelbildpfad.
+
+Zwei echte Auslösungen bei Fokus 112 und 29,995 ms Belichtungszeit aus
+derselben Sitzung ergaben 0,84 und 0,81 s bis zur Bildbestätigung auf ROSmini
+sowie 3,04 und 2,95 s bis zum geschriebenen Bildsatz der USB-OAK. Einmalig
+6,42 s vom Start bis zur Vorschau. Die Hashes des lokalen und installierten
+Workers stimmten überein. Workerabschluss und freigegebene Kamera-Lease
+wurden geprüft. [Messdaten](../../setup/calibration/mobile_volume_20261123/usb-stream-mg8zkgy2/summary.json)
+
+## Erster USB-Aufnahmepfad der gemeinsamen GUI vor dem Dauerbetrieb, 23.11.2026
+
+- Expliziter Folgeauftrag: vorhandene Aufnahme-GUI um die zweite OAK
+  ergänzen und nach den seriellen UR-Beobachtungsfahrten öffnen. Im Zellrepo
+  sechs Quellen und Profil`config/digitization/six_camera_capture.yaml`.
+- Neuer eigener USB-Vorschauworker`tools/usb_oak_board_preview.py`, aufN100
+  `~/uwa-camera/`.1280×960/2fps, feste physische USB-ID, Fokus112, gemeinsame
+  `.camera.lock`. Geordnetes Ende über stdin`stop`/EOF, keine UR-Befehle,
+  keine Firmware-/EEPROM-Schreiboperationen. Der UI-Transport übernimmt native
+  Fotos über den vorhandenen`usb_oak_photo.py`-Pfad.
+- Echter Übergang Vorschau → Freigabe → native4056×3040-Aufnahme bestanden,
+  `setup/calibration/mobile_volume_20261123/usb-gui-check-02/`. Factoryhash
+  der nativen Aufnahme unverändert, Kamera zu und Lease frei. Erster Versuch
+  scheiterte an der reinen Leseprüfung nach Pipelineende; korrigiert auf
+  Leseprüfung vor Ende, Fehlerprotokoll bleibt erhalten.
+- Nur die Anzeige rotiert180°. Detektion, Messkoordinaten und native Bilder
+  ungedreht. Keine neue Intrinsics/Extrinsics oder OAK4-Sitzung aktiviert.
+
 ## Zweite OAK am N100 montiert: Ausrichtung,23.11.2026
 
 - Nutzer hat USB-OAK am zweiten Tisch gegenüber der Ethernet-OAK4 montiert
