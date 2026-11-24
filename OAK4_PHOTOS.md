@@ -37,6 +37,23 @@ Seit16.11. zusätzlich gemeinsamer [RGB-D-CLI-Modus](OAK4_RGBD.md): `--mode rgbd
 mit entzerrter Farbe und darauf ausgerichteter, zeitlich gepaarter Tiefe.
 Er nutzt dieselbe Sperre; bestehende ROS-Trigger bleiben unverändert.
 
+## Standardfoto mit festem Fokus, 24.11.2026
+
+`capture --mode standard --focus 107` verwendet denselben nativen
+Aufnahmepfad wie die warme Sitzung. Drei fortschreitende Vorschau-Frames
+mit bestätigtem Fokus und stabilen Belichtungs-/Weißabgleichsdaten bilden
+den Einlauf. Nach bestätigtem Weißabgleich löst der Worker ein frisches
+8000 × 6000-Foto aus und schreibt `standard.png` und `metadata.json`.
+Dieser Pfad greift auch beim Standardfoto des Objekt-Scan-Bootstraps
+und bei der direkten Standardaufnahme ohne laufende Capture-GUI.
+
+Supported carton grasp startet den Worker einmal pro Run. Registrierung
+und Einfahrbild nutzen dasselbe SDK-Gerät und native PNG-Ausgaben. Die
+Gerätefreigabe folgt dem Einfahrbild oder dem Abbruch des Runs. Die
+Vollbildbestätigung dauerte bei zwei Aufnahmen aus derselben Sitzung
+je 0,66 s, das gespeicherte PNG lag nach 2,56 und 2,51 s vor.
+[Messdaten](../../setup/calibration/oak_pipeline_20261124/benchmark.json)
+
 ## Wiederholungsprüfung vor einem Roboterscan
 
 ```bash

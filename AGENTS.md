@@ -1,5 +1,12 @@
 # OAK-Kamera: Arbeitsregeln
 
+- Nutzerauftrag 24.11.2026. In Fotoabläufen mit bekanntem festem Fokus
+  Kamera-Neustarts vermeiden. Bei einzelnen OAK4-Aufnahmen Einlauf
+  anhand der bestätigten Metadaten statt fester Pausen bestimmen.
+  Bei wiederholten nativen Standardbildern eine Sitzung mit gemeinsamen
+  Geräte-Lease verwenden und nur frische, nach dem Trigger gestartete
+  Belichtungen speichern.
+
 - Seit23.11. USB-OAK-D-Pro-AF am N100 gegenüber der OAK4 am zweiten Tisch
   montiert. Nutzerziel: beide festen Boards und gemeinsamer Arbeitsraum.
   Physische Ausrichtung durch Nutzer, danach eigene Fokus-/Posekalibrierung;

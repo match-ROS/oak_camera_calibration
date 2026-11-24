@@ -1,5 +1,13 @@
 # USB-OAK am N100: native Fotos und Ausrichtung
 
+Seit 24.11. verwendet der Einzelbildpfad den initial gesetzten festen Fokus.
+Er wartet auf drei fortschreitende native Frames mit bestätigtem Fokus
+und weiterhin auf den Belichtungseinlauf von drei Sekunden. Im Vergleich
+bei Fokus 112 lag die Laufzeit für den gesamten Vorgang bei 14,88 s
+gegenüber 15,06 s. Beide Bilder lieferten auf den festen Boards je 17/16
+Marker und 24/22 ChArUco-Ecken (links/rechts).
+[Prüfbilder und Zeiten](../../setup/calibration/oak_pipeline_20261124/usb-benchmark/)
+
 Stand23.11.2026. Physische **OAK-D Pro AF**, USB-ID`18443010314F3B1300`,
 RVC2/IMX378. Von der Ethernet-OAK4 mitID1479883285 getrennt. Nutzer hat sie
 am zweiten Tisch gegenüber der OAK4 montiert; Ziel sind beide festen

@@ -1,5 +1,40 @@
 # OAK4-Einrichtung und Live-/Grenztests
 
+## USB-Referenz für den Zweikamera-Kartongriff, 24.11.2026
+
+Das Zellprogramm **Supported carton grasp** nutzt nun optional die zweite
+OAK-D Pro AF über den vorhandenen N100-Einzelfotopfad. Reine Kameraaufnahme
+um11:31AWST, Geräte-ID18443010314F3B1300/Fokus112/native4056×3040:
+16rechte Tischboardmarker und1,1907px Prüf-RMS. Eigene zwölfstündige
+Referenz unter `setup/skill_library/carton-usb-camera-session.json`, gültig
+bis23:31:11AWST. Optik aus der gesonderten Paarmessung vom23.11., keine
+globale Profil-/Werkskalibrierungsänderung. Rohbilder ungedreht erhalten.
+Die beiden aktuellen Kartonfits zeigen noch eine180°-Frame-Mehrdeutigkeit;
+keine Genauigkeitsverbesserung oder Realfahrt aus der neuen Perspektive
+nachgewiesen. Gemini bestätigte die Anwesenheit an der OAK4-Projektion.
+Details und Rückfallregeln im Zellrepo `docs/carton_multiview.md`, Nachweise
+`setup/tasks/carton-multiview-20261124/`. Nutzer hat für diese Auswertung
+Bildausschnitte/Overlays an Hydrogen über Antigravity ausdrücklich erlaubt.
+
+## Headless-Standardbilder für Programme, 24.11.2026
+
+Die Kartonbibliothek hält die native OAK4-Pipeline mit Fokus 107 während
+Registrierung und offener Einfahrt offen. Zwei reale Auslösungen in
+derselben Sitzung ergaben 0,66 s bis zum Host und 2,56 sowie 2,51 s bis
+zum nativen PNG. Einzeltransaktionen mit festem Fokus verwenden denselben
+Worker unter der bisherigen Lease. Beim Kaltstart prüfen drei fortschreitende
+Vorschauframes Fokus, Belichtung und Weißabgleich vor dem eigentlichen
+nativen Trigger. Die vollständige Tischboard-Kalibrierung im isolierten
+Library-Test dauerte 9,44 s und erreichte 17 Marker bei 1,35 px
+Prüf-RMS. [Nachweise](../../setup/calibration/oak_pipeline_20261124/)
+
+USB-Fallback ohne GUI prüft drei fortschreitende native Frames mit
+dem initial gesetzten Fokus nach dem Belichtungseinlauf. Verglichen am
+N100 bei Fokus 112 ergaben sich 14,88 s gegenüber 15,06 s mit demselben
+Boardbefund. Die übernommene Datei ist bytegleich zum geprüften Kandidaten.
+Die Ausgangsdatei liegt auf dem N100 in
+`~/uwa-camera/results/pipeline-20261124/usb_oak_photo.before.py`.
+
 ## Optische Posen beider externen Kameras, 23.11.2026
 
 Das rechte feste Tischboard ist der vorläufige gemeinsame Bezugspunkt.

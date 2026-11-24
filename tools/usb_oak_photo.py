@@ -58,36 +58,32 @@ def capture(args, report):
                 controls = cam.inputControl.createInputQueue()
                 pipeline.start()
                 try:
-                    start = time.monotonic(); history = []
-                    while time.monotonic()-start < 20:
-                        frame = queue.tryGet()
-                        if frame is None:
-                            time.sleep(.02); continue
-                        info = describe(frame)
-                        if (info['width'], info['height']) != size:
-                            raise RuntimeError(f'Native dimensions not confirmed: {info}')
-                        history.append(info)
-                        if time.monotonic()-start >= 3 and len(history) >= 3 and len({f['lens_position'] for f in history[-3:]}) == 1:
-                            break
-                    else:
-                        raise TimeoutError('No settled native image within20s')
-                    focus = info['lens_position']
-                    if not 0 <= focus <= 255 or focus != selected_focus:
-                        raise RuntimeError('Native manual/autofocus readback invalid')
-                    ctrl = dai.CameraControl()
-                    ctrl.setAutoFocusMode(dai.CameraControl.AutoFocusMode.OFF)
-                    ctrl.setManualFocus(focus)
-                    controls.send(ctrl)
-                    previous = info['sequence']; deadline = time.monotonic()+8
+                    started = time.monotonic()
+                    deadline = started + 20
+                    history = []
+                    consecutive = 0
                     while time.monotonic() < deadline:
                         frame = queue.tryGet()
                         if frame is None:
-                            time.sleep(.02); continue
-                        actual = describe(frame)
-                        if actual['sequence'] > previous and actual['lens_position'] == focus:
+                            time.sleep(.02)
+                            continue
+                        info = describe(frame)
+                        if (info['width'], info['height']) != size:
+                            raise RuntimeError(f'Native dimensions not confirmed: {info}')
+                        if history and info['sequence'] <= history[-1]['sequence']:
+                            continue
+                        history.append(info)
+                        if (info['lens_position'] == selected_focus and
+                                min(info['exposure_us'], info['reported_iso'], info['white_balance_K']) > 0):
+                            consecutive += 1
+                        else:
+                            consecutive = 0
+                        if consecutive >= 3 and time.monotonic() >= started + 3:
                             break
                     else:
-                        raise TimeoutError('Locked-focus native photo not confirmed')
+                        raise TimeoutError('No three advancing native frames with the requested fixed focus within 20s')
+                    actual = info
+                    focus = actual['lens_position']
                     image = frame.getCvFrame()
                     if image.shape != (size[1], size[0], 3):
                         raise RuntimeError(f'Unexpected native payload {image.shape}')

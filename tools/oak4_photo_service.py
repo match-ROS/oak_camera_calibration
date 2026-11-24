@@ -83,11 +83,17 @@ class PhotoCapture:
                 directory = data_root / f'{stamp}-{mode}-{uuid.uuid4().hex[:8]}'
                 directory.mkdir()
                 self.update(phase='CAPTURING', mode=mode, directory=str(directory), error=None)
-                worker = ('oak4_charuco_capture.py' if charuco else 'oak4_rgbd_capture.py' if rgbd else
+                fixed_standard = mode == 'standard' and focus is not None
+                worker = ('oak4_session_capture.py' if fixed_standard else
+                          'oak4_charuco_capture.py' if charuco else 'oak4_rgbd_capture.py' if rgbd else
                           'oak4_depth_capture.py' if depth else 'oak4_photo_capture.py')
                 command = [str(oakctl), 'run-script', str(sdk), '-u', str(TOOLS / worker),
                            '--ip', ip, '--device-id', str(camera.get('device_id', '')),
-                           '--output', str(directory), '--frames', str(frames)]
+                           '--output', str(directory)]
+                if fixed_standard:
+                    command.extend(['--lease-fd', str(lock.fileno()), '--focus', str(focus)])
+                else:
+                    command.extend(['--frames', str(frames)])
                 if charuco:
                     from oak4_charuco import freeze_config
                     frozen_path = directory / 'search-config.json'
@@ -95,9 +101,9 @@ class PhotoCapture:
                     command.extend(['--search-config', str(frozen_path)])
                 elif rgbd:
                     command.extend(['--focus', str(116 if focus is None else focus)])
-                else:
+                elif not fixed_standard:
                     command.extend(['--mode', mode.removeprefix('depth_')])
-                if not depth and not rgbd:
+                if not depth and not rgbd and not fixed_standard:
                     command.extend(['--iso', str(iso)])
                     if focus is not None:
                         command.extend(['--focus', str(focus)])
@@ -106,7 +112,8 @@ class PhotoCapture:
                 env.pop('PYTHONPATH', None)
                 with (directory / 'capture.log').open('w') as log:
                     child = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT,
-                                             env=env, start_new_session=True)
+                                             env=env, start_new_session=True,
+                                             pass_fds=(lock.fileno(),) if fixed_standard else ())
                     try:
                         code = child.wait(timeout=300)
                     except BaseException:
