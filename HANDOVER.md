@@ -1,5 +1,17 @@
 # OAK4-Einrichtung und Live-/Grenztests
 
+## Optische Posen beider externen Kameras, 23.11.2026
+
+Das rechte feste Tischboard ist der vorläufige gemeinsame Bezugspunkt.
+Die 15 Sechskamerasätze `20261123_143953_b34a17a2` ergeben am aktuellen
+Montageort einen Abstand von 2,138 m zwischen den Farbkameras. OAK4 mit
+Fokus 107, 8000 × 6000; USB-OAK mit Fokus 112, 4056 × 3040. Die für
+die USB-OAK angepasste Brennweite beträgt 3048,55 px. Die Stereo-Gegenprobe
+nur mit dem mobilen Board unterscheidet sich um 20 mm Translation und
+0,62° Rotation. Transformationsrichtung, Achsen, Intrinsics, Bildmessungen
+und Prüfnachweise stehen im [Ergebnisbericht](../../setup/calibration/external_pair_20261123/Ergebnis.md).
+Die Auswertung erzeugte ein Offline-Ergebnis im Workspace.
+
 ## Vier Beobachtungsposen erreicht, gemeinsame GUI offen, 23.11.2026
 
 - Abschluss der seriellen UR-Anfahrten: alle vier berechneten Ziele real
