@@ -4,7 +4,7 @@ from pathlib import Path
 import unittest
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
-from oak4_depth_fusion import fuse_depth
+from oak4_depth_fusion import fuse_brackets, fuse_depth
 
 
 class FusionTests(unittest.TestCase):
@@ -50,6 +50,19 @@ class FusionTests(unittest.TestCase):
         for data in (np.ones((16, 2, 2), np.float32), np.ones((3, 2, 2), np.uint16)):
             with self.assertRaises(ValueError):
                 fuse_depth(data)
+
+    def test_brackets_keep_supported_ir_and_reject_conflicting_depths(self):
+        data = np.zeros((4, 4, 1, 4), np.uint16)
+        data[3, :3, 0, 0] = 1300          # Stable only with IR.
+        data[0, :, 0, 1] = 1000
+        data[3, :, 0, 1] = 1300           # Stable groups that disagree.
+        data[3, :2, 0, 2] = 1500          # Insufficient repeat support.
+        data[0, :, 0, 3] = 65530
+        data[3, :, 0, 3] = 65534          # Sum must not wrap at uint16.
+        result = fuse_brackets(data)
+        np.testing.assert_array_equal(result['hq'], [[1300, 0, 0, 65532]])
+        np.testing.assert_array_equal(result['cross_exposure_conflict'], [[False, True, False, False]])
+        np.testing.assert_array_equal(result['contributing_settings'], [[1, 2, 0, 2]])
 
 
 if __name__ == '__main__':

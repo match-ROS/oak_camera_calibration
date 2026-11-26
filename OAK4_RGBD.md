@@ -23,6 +23,37 @@ Kamera wird anschließend geschlossen. Standard8Paare, zulässig1–32.
 RGB-Automatikbelichtung, manueller Fokus standard116; `--iso` ist hier keine
 Einstellmöglichkeit. Bestehende Foto-/HQ-Tiefenmodi behalten ihren Ablauf.
 
+## RGB-HQ-HDR und Stereo-HDR für statische Programme
+
+```bash
+bash src/oak_camera_calibration/tools/oak4_photo.sh capture --mode rgbd_hq --focus 116
+```
+
+**Object scan** verwendet `rgbd_hq` für die OAK4-HQ-Übersicht. In
+**Supported carton grasp** verwendet der optionale Tiefennachweis denselben
+Modus vor der nativen Poseaufnahme. Auf dem entzerrten RGB-Gitter liegen
+drei Farbstufen aus je sechs Aufnahmen und eine aus vier Viererblöcken
+stabil zusammengefasste Tiefenkarte. Ein Stereo-Block verwendet 100 %
+IR-Punktprojektor. Die Kamera gibt den Projektor vor den Farbstufen frei.
+
+`metadata.json` verweist unter `hq` auf `hdr.png`, `hq-depth-mm.png`
+und deren Gültigkeitsmaske. `depth_hdr` und `hdr` enthalten die einzelnen
+Zeitstempel und Einstellungen. Die 16 bereits auf RGB ausgerichteten
+Roh-Tiefenkarten und Konfliktmasken stehen in `depth-brackets.npz`.
+Diese Ausgabe repräsentiert eine ruhende Szene über die Aufnahmedauer.
+Für Verbraucher ist `hq` der zusammengesetzte Datensatz.
+
+## Einzelne Farbstufen für den einfachen RGB-HDR-Modus
+
+`capture --mode rgbd_hdr --frames 8 --focus 116` ergänzt zum bisherigen
+RGB-D-Satz drei Farbstufen (−2, 0, +2 EV) bei ISO 400 und festem Fokus und
+Weißabgleich. Die drei unveränderten Stufen und die Mertens-Fusion
+`hdr.png` liegen auf demselben entzerrten 1280×960-RGB-Gitter. Die
+separat gespeicherte `hdr-base-depth-mm.png` stammt aus dem zur mittleren
+RGB-Stufe zeitlich gruppierten Stereobild. `metadata.json` enthält den
+Bezug, die Gerätezeiten und die bestätigten Belichtungswerte. Objekt und
+Kamera müssen bei der Mehrfachbelichtung stillstehen.
+
 ## Daten und Prüfungen
 
 RVC4/DepthAI3.12: native1280×800-Stereoausgaben, FAST_ACCURACY mit Software-

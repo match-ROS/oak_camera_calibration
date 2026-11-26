@@ -78,6 +78,26 @@ Grenzen: [OAK-Stabilitätsprüfung](OAK4_STABILITY_2026-11-13.md).
 
 ## Ein Foto aufnehmen
 
+### RGB-HQ-HDR mit sechs Bildern pro Stufe
+
+```bash
+bash src/oak_camera_calibration/tools/oak4_photo.sh capture --mode hdr_hq --focus 107
+```
+
+`hdr_hq` nimmt je sechs native Bilder (8000×6000) bei −2, 0 und +2 EV
+auf. ISO 400 ist der Standard für diesen Modus. Jede Stufe wird zunächst
+gemittelt, dann werden die drei Mittelbilder mit dem nativen OpenCV-
+Mertens-Verfahren fusioniert. Ausgabe und Stufenarchive sind verlustfreie
+PNG. Der Kameraknoten sendet pro Stufe einen begrenzten Burst anstatt
+sechs einzelner Hostanforderungen. Belichtung, ISO, Fokus, Weißabgleich und
+frische Sequenzen werden weiterhin pro Bild verifiziert. Die Fusion nutzt
+vier OpenCV-Threads. Kamera und Szene müssen während der Aufnahme ruhen.
+
+Alternativ ROS `/oak4/photo/capture_hdr_hq` als `std_srvs/srv/Trigger`
+in Domain 65/LOCALHOST. Der Trigger ermittelt den Fokus wie der CLI ohne
+`--focus`. RGB-HQ-HDR und [Stereo-HDR](OAK4_DEPTH.md) verwenden dieselbe
+Kamerasperre.
+
 ### Optional: Belichtungsreihe / HDR-artige Fusion
 
 Seit18.11. läuft `--mode hdr` automatisch über den schnelleren Pfad. Die

@@ -80,18 +80,27 @@ class TransactionTests(unittest.TestCase):
             return Mock(wait=Mock(return_value=0))
         with patch.object(service.subprocess, 'run', return_value=Mock(returncode=3)), \
              patch.object(service.subprocess, 'Popen', side_effect=start):
-            result = self.capture.capture(mode='hdr', focus=107)
-        command = calls[0]
-        for key, value in (('--mode', 'hdr'), ('--frames', '1'), ('--iso', '100'), ('--focus', '107')):
-            self.assertEqual(command[command.index(key) + 1], value)
-        self.assertEqual(set(result['brackets']), {'short', 'base', 'long'})
-        self.assertIn('hdr', result['images'])
-        self.assertTrue(result['exposure_limited'])
+            for mode, frames, iso in (('hdr', '1', '100'), ('hdr_hq', '6', '400')):
+                with self.subTest(mode=mode):
+                    result = self.capture.capture(mode=mode, focus=107)
+                    command = calls[-1]
+                    for key, value in (('--mode', mode), ('--frames', frames), ('--iso', iso), ('--focus', '107')):
+                        self.assertEqual(command[command.index(key) + 1], value)
+                    self.assertEqual(set(result['brackets']), {'short', 'base', 'long'})
+                    self.assertIn('hdr', result['images'])
+                    self.assertTrue(result['exposure_limited'])
+            self.capture.capture(mode='depth_hdr')
+            command = calls[-1]
+            self.assertTrue(any(part.endswith('/oak4_depth_capture.py') for part in command))
+            self.assertEqual(command[command.index('--mode') + 1], 'hdr')
+            self.assertEqual(command[command.index('--frames') + 1], '4')
+            self.assertNotIn('--iso', command)
         self.assertEqual(self.capture.status()['phase'], 'READY')
 
     def test_hdr_rejects_excessive_burst_before_transaction(self):
-        with self.assertRaises(ValueError):
-            self.capture.capture(mode='hdr', frames=9)
+        for mode, frames in (('hdr', 9), ('hdr_hq', 5), ('depth_hdr', 8)):
+            with self.subTest(mode=mode), self.assertRaises(ValueError):
+                self.capture.capture(mode=mode, frames=frames)
         self.assertFalse(self.capture.root.exists())
 
     def test_busy_thread_preserves_running_status(self):

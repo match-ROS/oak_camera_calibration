@@ -14,6 +14,31 @@ import depthai as dai
 import numpy as np
 from oak4_hdr import acquire as acquire_hdr, finish as finish_hdr
 
+HDR_MODES = ('hdr', 'hdr_hq')
+SINGLE_GATE = '''
+while True:
+    frame = node.io['frames'].get()
+    if node.io['trigger'].tryGet() is not None:
+        node.io['still'].send(frame)
+'''
+BURST_GATE = '''
+remaining = 0
+next_sequence = 0
+while True:
+    frame = node.io['frames'].get()
+    if remaining == 0:
+        request = node.io['trigger'].tryGet()
+        if request is not None:
+            remaining = request.getData()[0]
+            # Start with the next native frame after the request is seen.
+            next_sequence = frame.getSequenceNum() + 1
+    elif frame.getSequenceNum() >= next_sequence:
+        node.io['still'].send(frame)
+        remaining -= 1
+        # At 10 fps, one 72 MB frame per three sensor frames fits 2.5 GbE.
+        next_sequence = frame.getSequenceNum() + 3
+'''
+
 
 def metadata(frame):
     return dict(width=frame.getWidth(), height=frame.getHeight(),
@@ -53,17 +78,13 @@ def collect(args, report):
             gate = pipeline.create(dai.node.Script)
             full.link(gate.inputs['frames'])
             # Send only requested full frames; continuous 48 MP does not fit 2.5 GbE.
-            gate.setScript('''
-while True:
-    frame = node.io['frames'].get()
-    if node.io['trigger'].tryGet() is not None:
-        node.io['still'].send(frame)
-''')
-            output = gate.outputs['still'].createOutputQueue(maxSize=1, blocking=False)
+            burst = args.mode == 'hdr_hq'
+            gate.setScript(BURST_GATE if burst else SINGLE_GATE)
+            output = gate.outputs['still'].createOutputQueue(maxSize=2 if burst else 1, blocking=burst)
             trigger = gate.inputs['trigger'].createInputQueue()
             control = cam.inputControl.createInputQueue()
             preview = None
-            if args.mode == 'hdr':
+            if args.mode in HDR_MODES:
                 # OAK4 8K supports one ISP output: derive metadata preview from it.
                 small = pipeline.create(dai.node.ImageManip)
                 small.initialConfig.setOutputSize(320, 240)
@@ -74,10 +95,16 @@ while True:
                 preview = small.out.createOutputQueue(maxSize=2, blocking=False)
             last_sequence = -1
 
+            def request_burst(count):
+                request = dai.Buffer()
+                request.setData(bytes([count]))
+                trigger.send(request)
+
             def capture():
                 nonlocal last_sequence
-                trigger.send(dai.Buffer())
-                deadline = time.monotonic() + 30
+                if not burst:
+                    trigger.send(dai.Buffer())
+                deadline = time.monotonic() + (8 if burst else 30)
                 while time.monotonic() < deadline:
                     frame = output.tryGet()
                     if frame is not None:
@@ -88,17 +115,18 @@ while True:
                             raise RuntimeError(f'Unexpected dimensions: {info}')
                         last_sequence = info['sequence']
                         return frame, info
-                    time.sleep(0.02)
-                raise TimeoutError('No native frame within 30 seconds')
+                    time.sleep(.005 if burst else .02)
+                raise TimeoutError('Native RGB frame did not arrive before the deadline')
 
             pipeline.start()
             try:
-                if args.mode == 'hdr':
+                if args.mode in HDR_MODES:
                     def manual_control():
                         ctrl = dai.CameraControl()
                         ctrl.setAutoFocusMode(dai.CameraControl.AutoFocusMode.OFF)
                         return ctrl
-                    return acquire_hdr(args, report, capture, control, preview, manual_control, metadata)
+                    return acquire_hdr(args, report, capture, control, preview, manual_control, metadata,
+                                       request_burst=request_burst if burst else None)
                 time.sleep(5)
                 frame, meter = capture()
                 report['metering'] = meter
@@ -174,7 +202,7 @@ while True:
                 restore.setAutoFocusMode(dai.CameraControl.AutoFocusMode.CONTINUOUS_VIDEO)
                 try:
                     control.send(restore)
-                    if args.mode != 'hdr':
+                    if args.mode not in HDR_MODES:
                         time.sleep(.3)
                 finally:
                     pipeline.stop()
@@ -186,18 +214,23 @@ def main():
     p.add_argument('--ip', required=True)
     p.add_argument('--device-id', default='')
     p.add_argument('--output', type=Path, required=True)
-    p.add_argument('--mode', choices=('standard', 'hq', 'compare', 'hdr'), default='hq')
+    p.add_argument('--mode', choices=('standard', 'hq', 'compare', *HDR_MODES), default='hq')
     p.add_argument('--frames', type=int, default=None)
-    p.add_argument('--iso', type=int, default=100)
+    p.add_argument('--iso', type=int)
     p.add_argument('--focus', type=int, default=None)
     args = p.parse_args()
-    args.frames = (1 if args.mode == 'hdr' else 8) if args.frames is None else args.frames
+    if args.frames is None:
+        args.frames = {'hdr': 1, 'hdr_hq': 6}.get(args.mode, 8)
+    if args.iso is None:
+        args.iso = 400 if args.mode == 'hdr_hq' else 100
     if not 1 <= args.frames <= 32 or not 100 <= args.iso <= 1600:
         p.error('frames must be 1..32 and ISO 100..1600')
     if args.focus is not None and not 0 <= args.focus <= 255:
         p.error('focus must be 0..255')
     if args.mode == 'hdr' and args.frames > 8:
         p.error('HDR supports 1..8 frames per exposure')
+    if args.mode == 'hdr_hq' and args.frames != 6:
+        p.error('HQ HDR uses six frames per exposure')
     args.output.mkdir(parents=True, exist_ok=True)
     if (args.output / 'metadata.json').exists():
         p.error('Output already contains a capture')
@@ -214,11 +247,15 @@ def main():
         tick = time.monotonic()
         images = collect(args, report)
         camera_closed = time.monotonic()
-        if args.mode == 'hdr':
+        if args.mode in HDR_MODES:
             report['hdr_timing_s']['camera_session'] = camera_closed - tick
+            fast = args.mode == 'hdr_hq'
             report['hdr_implementation'] = 'metadata-confirmed controls; in-memory fusion; concurrent lossless PNG level1'
+            if fast:
+                report['hdr_acquisition'] = 'device-triggered burst (3 sensor frames apart)'
+                report['hdr_fusion_threads'] = 4
             print('HDR camera CLOSED; fusion RUNNING', flush=True)
-            finish_hdr(args.output, images, report)
+            finish_hdr(args.output, images, report, fast=fast)
             report['averaging'] = 'Within each exposure only, before fusion' if args.frames > 1 else 'none'
             report['hdr_timing_s']['worker_total'] = time.monotonic() - tick
         report['success'] = True

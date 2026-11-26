@@ -1,5 +1,151 @@
 # OAK4-Einrichtung und Live-/Grenztests
 
+## Program-Library-Profil `rgbd_hq`, 26.11.2026
+
+Gemeinsame statische Qualitätsaufnahme im bestehenden Fotodienst für
+**Object scan** und die optionale Tiefenevidenz beim Karton. 4×4 Stereo
+mit aktivem mittleren Block und 3×6 RGB werden in derselben Gerätesitzung
+erfasst. ImageAlign liefert für jedes Tiefenbild das entzerrte CAM-A-Gitter.
+Die tatsächliche Ausgangsgröße und Projektion werden gegen die RGB-Frames
+geprüft. Der Projektor wird vor den Farbstufen ausgeschaltet. Der
+zusammengesetzte Datensatz hat eigene `hq`-Dateiverweise und je Stufe
+bestätigte Eingangszeiten, während historische RGB-D-Datensätze ihre
+Paar-Metadaten behalten. Neuprüfung an der echten OAK4 im abgeschlossenen
+Auftrag `setup/tasks/library-hq-capture-20261126/`.
+[Bedienung und Datenformat](OAK4_RGBD.md)
+
+## 4×4 Stereo-HDR und schnelles 3×6 RGB-HQ-HDR im Fotodienst, 26.11.2026
+
+Nutzerauftrag umgesetzt als `depth_hdr` und `hdr_hq` in der vorhandenen
+CLI und als `/oak4/depth/capture_hdr` beziehungsweise
+`/oak4/photo/capture_hdr_hq` im Benutzerdienst. Beide Modi verwenden
+die gemeinsame Kamera-Lease. Der Dienst wurde bei freier Lease neu geladen.
+Beide neuen ROS-Trigger lieferten danach mit der realen OAK4 erfolgreiche
+Datensätze. Zweiter Stereo-Lauf 8,55 s bis zur vollständigen Ausgabe.
+
+`depth_hdr` kombiniert vier Stereo-Blöcke mit je vier Frames und einer
+einmaligen IR-Umschaltung auf 100 % für die mittlere Belichtung. Die
+Steuerung prüft die tatsächlichen Mono-Belichtungen und Neuheit der
+gepaarten Daten. Stufenkonflikte bleiben ungültig, zum Ende erfolgt
+ein bestätigter Projektor-Aus-Befehl. Erstaufnahme 9,02 s vom Workerstart
+bis zu den fertigen Dateien, davon 8,38 s Kamerasitzung und 0,48 s Fusion.
+42,57 % gültig im Gesamtbild und 88,56 % im zuvor markierten
+Kartonboden-Ausschnitt. Abdeckung ist kein absoluter Genauigkeitsnachweis.
+Für dieselben vier Rohstufen sank die Zeit der zeitlichen Mediane von
+2,49 auf 0,40 s. Ergebnisse aller ausgegebenen Arrays waren identisch zum
+vorherigen Algorithmus, auch in Stichproben von 4 bis 32 Frames.
+[Stereo-Ergebnis und Metadaten](../../setup/oak4/depth/20261126-164435-depth_hdr-c4f85930/)
+
+`hdr_hq` triggert sechs Vollbilder je Stufe blockweise im Gerät und sendet
+bei 10 Hz jedes dritte Sensorbild über Ethernet. Alle 18 Bilder behalten
+48 MP. Belichtung, ISO, Fokus und Weißabgleich wurden je Vollbild bestätigt.
+Das OpenCV-Mertens-Verfahren läuft mit vier statt zwei Threads. Der reale
+Lauf mit Fokus 107 dauerte 20,45 s statt 25,68 s im vorigen 3×6-Versuch.
+Kamerasitzung 12,05 statt 14,10 s, Mertens-Fusion 6,16 statt 9,33 s.
+Am früheren Datensatz separat 7,83 s Fusion mit zwei Threads und 5,74 s
+mit vier Threads. PNG-Level 1 und die drei verlustfreien Stufenarchive
+bleiben das Ausgabeformat.
+[Neuer 48-MP-Datensatz](../../setup/oak4/photos/20261126-164535-hdr_hq-68b4e5fd/)
+[OpenCV-Zeitvergleich](../../setup/tasks/oak-fast-modes-20261126/opencv-benchmark.txt)
+
+## Kurze HQ-Serien und 100 % IR am Kartonboden, 26.11.2026
+
+OAK4-Pro bei 10 Hz, feste 3,352 ms und ISO 200. Manuell markierter,
+rektifizierter Ausschnitt mit 9.694 Pixeln im sichtbaren Kartonboden.
+Je acht Frames, davon mindestens sechs übereinstimmende Messungen, liefern
+im Ausschnitt 0,87 % gültige Tiefe bei IR aus, 81,64 % bei 50 % und 86,73 %
+bei 100 %. Ganzes Bild 32,28 / 38,84 / 41,80 %. Wiederholung IR aus ergibt
+1,67 % im Ausschnitt und 32,51 % im Bild. Gemessen wurde die Abdeckung,
+ohne unabhängige absolute Tiefenreferenz. Der Projektor war zum Ende aus.
+[Markierter Kartonboden und Gültigkeitsmasken](../../setup/tasks/oak-short-hq-20261126/erste-serie/kartonboden-ir.png)
+
+Zwölf Umschaltungen in einer offenen Pipeline bei konstant 3,352 ms.
+SDK-Aufruf 3,8–12,4 ms. Erstes passendes Stereo-Bildpaar am Host nach
+271–359 ms beim Einschalten und 87–177 ms beim Ausschalten. Identifikation
+über das IR-Muster der rechten Mono-Kamera, jeweils mit Bestätigung durch
+das nächste Bild. Zeitbezug ist Start des SDK-Aufrufs. Die Verzögerung
+enthält den 10-Hz-Aufnahmetakt und den Bildtransport.
+
+Aus denselben Serien offline verglichene Settings bei 0,838 / 3,352 /
+13,408 ms. Gültige Tiefe am Kartonboden / im Gesamtbild beträgt
+0,52 / 30,37 % bei 1×16 passiv, 8,46 / 36,36 % bei 3×6 passiv und
+81,59 / 41,66 % bei 3×6 mit aktiver mittlerer Stufe (100 %). 4×4
+(drei passive Belichtungen plus mittlere aktiv bei 100 %) liefert
+83,54 / 42,34 %, mit dem anderen 4er-Blocksatz 82,62 / 42,52 %.
+4×8 mit denselben Settings liefert 82,69 / 42,08 %. 8×4 gemischt
+liefert 85,76 / 37,96 %. Zeitliche HQ-Prüfung je Setting, anschließend
+Konsistenzprüfung zwischen den Settings. Abdeckung aus ruhender Szene,
+kein Betriebsmesswert für die Dauer des jeweiligen Aufnahmerezepts.
+[Alle Werte und Umschaltungen](../../setup/tasks/oak-short-hq-20261126/erste-serie/auswertung.json)
+
+RGB-HQ-HDR separat real geprüft: 48 MP, je sechs Aufnahmen bei 4,203 /
+16,812 / 67,248 ms, ISO 400 und Fokus 107. Je Stufe werden sechs
+Bilder gemittelt, anschließend Mertens-Belichtungsfusion der drei Stufen.
+18 bestätigte unterschiedliche Frames. Laufzeit 25,68 s inklusive
+Verarbeitung und Ausgabe. **Object scan** verwendet weiterhin den
+schnelleren RGB-HDR-Aufnahmepfad. [RGB-HQ-HDR-Vorschau](../../setup/oak4/photos/20261126-162925-hdr-8c592837/hq-hdr-vorschau.jpg)
+
+## RGB-HDR und Stereo-Belichtungsreihen, 26.11.2026
+
+Nutzer wünscht RGB-HDR für die statischen Aufnahmen. **Object scan** verwendet
+jetzt OAK4 `rgbd_hdr` für die erste Ansicht, weitere OAK4-Ansichten als
+native 48-MP-Belichtungsfusion. Die Übersicht bewahrt alle RGB-Stufen,
+das normale RGB-D-Sample und die dem mittleren RGB-HDR-Bild zugeordnete
+Tiefe auf. Aufnahme und lokales Laden der passenden Tiefe über den echten
+Scan-Fotopfad geprüft, ebenso ein natives Detailbild. Zeitabstand von RGB
+und Tiefe der mittleren Stufe 1,73 ms. Der lokale Program-Library-Server
+wurde bei freiem Auftragslock neu geladen, vorhandener Scan und Katalog
+per HTTP geprüft. [Bedienung](OAK4_RGBD.md)
+
+Separater Stereo-Versuch am ruhenden Zellbild, OAK4, ISO 200. Je 16 Frames
+bei 0,825 / 3,303 / 13,212 ms ergeben 23,57 / 30,52 / 26,10 % gültige
+HQ-Tiefenpixel. Wiederholung der mittleren Stufe 30,47 %. Fusion der pro
+Stufe stabilen Tiefen ergibt 36,01 %. Unterschiede zwischen Stufen über
+`max(10 mm, 1 %)` setzen 2,04 % der Bildpunkte auf ungültig. 7,43 %
+werden gegenüber der mittleren Stufe neu gültig, 1,94 % ihrer gültigen
+Punkte werden verworfen (jeweils relativ zum Gesamtbild).
+[Stereo-Belichtungsvergleich](../../setup/tasks/oak-stereo-hdr-20261126/oak4/vergleich.png)
+
+Aus den Werksdaten geht hervor, dass die Ethernet-Kamera ebenfalls das
+Pro-Modell ist (`OAK-4-PRO-AF`). Bei beiden Pro-Kameras wurde der eingebaute
+IR-Punktprojektor mit gleicher Belichtung und 16 Frames je Stufe aus →
+50 % → aus gemessen. HQ-Abdeckung OAK4 30,29 → 36,69 → 30,63 %, USB-OAK-D
+Pro AF 50,50 → 54,12 → 50,98 %. Auf gemeinsam gültigen OAK4-Pixeln beträgt
+das 95. Perzentil der absoluten Tiefendifferenz zum ersten Aus-Zustand
+19 mm bei IR an und 9 mm bei erneut aus. Damit sind Abdeckung und
+Einfluss auf Messwerte an dieser Szene belegt. Ein absoluter Tiefenfehler
+wurde hierbei nicht vermessen. Der Projektor endete nach beiden Tests
+ausgeschaltet. Stereo-Belichtungsfusion und IR-Versuche sind reproduzierbare
+Kameraproben im Aufgabenordner, ohne Umstellung der laufenden Tiefenprofile.
+[Rohdaten, Einstellungen und Statistiken](../../setup/tasks/oak-stereo-hdr-20261126/)
+
+## Tiefenlücken im aktuellen Zellbild, 26.11.2026
+
+Aufnahmen ca. 15:47–15:48 AWST. OAK4 `depth_compare` bei 1280×800
+in der rektifizierten rechten Ansicht. Im einzelnen Stereo-Tiefenbild
+sind 46,26 % der Pixel gültig, im HQ-Ergebnis 30,71 %. In der 16er-Serie
+haben 39,82 % aller Pixel durchgehend null gültige Stereoausgaben,
+18,67 % haben 1–11 gültige Ausgaben und 10,80 % haben mindestens 12
+gültige Ausgaben, scheitern aber an der Stabilitätsprüfung. Die Lücken
+sind bereits vor der HQ-Fusion sichtbar. [Stereo-Vergleich](../../setup/oak4/depth/20261126-154704-depth_compare-8f6113e9/comparison.png)
+
+Die separate OAK4-RGB-D-Aufnahme bei Fokus 107 hat 51,63–51,92 % gültige
+Tiefe über die gesamte auf RGB ausgerichtete Fläche. In vier Frames hat
+eine Stichprobe innerhalb des hinteren Schachbrettmusters 100 % gültige
+Tiefe, eine Stichprobe der glatten vorderen Tischfläche 5,86–9,44 %.
+Die Bereiche auf dem 1280×960-Gitter sind bei halboffenen Pixelgrenzen
+`x=556:636, y=304:366` und `x=340:404, y=658:726`. Die Beobachtung passt
+zu fehlender lokaler Struktur für passives Stereo. Einzelne Lücken lassen
+sich aus diesen Bildern allein keiner bestimmten Ursache zuordnen.
+[Farbbild, Tiefe und Überlagerung](../../setup/oak4/rgbd/20261126-154736-rgbd-bd1891a8/preview.png)
+
+Die gegenüber montierte OAK-D Pro AF liefert im vorhandenen USB-Stereotest
+bei ausgeschaltetem IR-Projektor 76,09 % gültige Pixel im gespeicherten
+640×400-Einzelbild. Die Vorschau dreht Farbe und Tiefe zur Anzeige um 180°.
+Farbe und Tiefe haben eigene Bildfelder. Blickwinkel, Auflösung und Profile
+unterscheiden sich von der OAK4. Die Messung beschreibt die Bildabdeckung
+der jeweiligen Aufnahme. [USB-Vergleich und Rohdaten](../../setup/n100/ros-camera/captures/depth-holes-20261126-1548-passive/)
+
 ## USB-Referenz für den Zweikamera-Kartongriff, 24.11.2026
 
 Das Zellprogramm **Supported carton grasp** nutzt nun optional die zweite

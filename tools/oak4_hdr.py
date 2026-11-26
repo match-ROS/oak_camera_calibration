@@ -27,7 +27,7 @@ def wait_metadata(queue, describe, predicate, timeout=8., consecutive=2):
     raise TimeoutError('HDR camera metadata did not settle/confirm within deadline')
 
 
-def acquire(args, report, capture, control, preview, make_control, describe):
+def acquire(args, report, capture, control, preview, make_control, describe, request_burst=None):
     """Acquire full-resolution brackets without serial PNG I/O or fixed sleeps."""
     started = time.monotonic()
     timings = report.setdefault('hdr_timing_s', {})
@@ -77,13 +77,19 @@ def acquire(args, report, capture, control, preview, make_control, describe):
             except RuntimeError:
                 return False
 
-        wait_metadata(preview, describe, confirmed)
+        settled = wait_metadata(preview, describe, confirmed)
         entry = dict(step, frames=[], path=f"hdr-{step['name']}.png")
         report['hdr_brackets'].append(entry)
         accumulator = None
         deadline = time.monotonic() + 8
+        if request_burst is not None:
+            request_burst(args.frames)
         while len(entry['frames']) < args.frames:
             frame, info = capture()
+            if request_burst is not None and (
+                not confirmed(info) or info['sequence'] <= settled['sequence']
+            ):
+                raise RuntimeError('HDR burst frame does not follow the confirmed exposure')
             if not confirmed(info):
                 del frame
                 if time.monotonic() > deadline:
@@ -116,7 +122,7 @@ def acquire(args, report, capture, control, preview, make_control, describe):
     return images
 
 
-def finish(output, images, report):
+def finish(output, images, report, fast=False):
     """Keep decoded brackets for fusion; archive PNGs concurrently and losslessly."""
     timings = report['hdr_timing_s']
 
@@ -134,7 +140,7 @@ def finish(output, images, report):
         jobs = [(step['name'], writers.submit(save, step['path'], im))
                 for step, im in zip(report['hdr_brackets'], images)]
         fusion_start = time.monotonic()
-        result = fuse(images)
+        result = fuse(images, threads=4) if fast else fuse(images)
         timings['fusion'] = time.monotonic() - fusion_start
         timings['final_png'] = save('hdr.png', result)
         for name, job in jobs:
@@ -164,12 +170,12 @@ def verify_exposure(info, expected, iso, fixed):
         raise RuntimeError('HDR focus/white balance changed')
 
 
-def fuse(images):
+def fuse(images, threads=2):
     if len(images) != 3 or any(im.dtype != np.uint8 or im.shape != images[0].shape
                                or im.ndim != 3 or im.shape[2] != 3 for im in images):
         raise ValueError('HDR requires three matching uint8 BGR images')
-    # Bound CPU parallelism while other workspace applications are running.
-    cv2.setNumThreads(2)
+    # OpenCV implements the fusion in native code. Bound the worker pool.
+    cv2.setNumThreads(threads)
     result = cv2.createMergeMertens(1., 1., 1.).process(images)
     if not np.isfinite(result).all():
         raise RuntimeError('Nonfinite HDR fusion output')

@@ -15,6 +15,8 @@ bash src/oak_camera_calibration/tools/oak4_photo.sh capture --mode depth_standar
 bash src/oak_camera_calibration/tools/oak4_photo.sh capture --mode depth_compare
 # Optional 4..32 Frames; Standard 16:
 bash src/oak_camera_calibration/tools/oak4_photo.sh capture --mode depth_hq --frames 16
+# Vier Stereo-Einstellungen mit je vier Frames und einem IR-Block:
+bash src/oak_camera_calibration/tools/oak4_photo.sh capture --mode depth_hdr
 ```
 
 ROS-Aufrufe mit festen16Frames:
@@ -25,6 +27,7 @@ export ROS_DOMAIN_ID=65 ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 ros2 service call /oak4/depth/capture_hq std_srvs/srv/Trigger '{}'
 ros2 service call /oak4/depth/capture_compare std_srvs/srv/Trigger '{}'
 ros2 service call /oak4/depth/capture_standard std_srvs/srv/Trigger '{}'
+ros2 service call /oak4/depth/capture_hdr std_srvs/srv/Trigger '{}'
 ros2 service call /oak4/depth/status std_srvs/srv/Trigger '{}'
 ```
 
@@ -33,6 +36,34 @@ Zusatzdateien. Der Status gehört zum gemeinsamen Foto-/Tiefendienst; bei RGB-
 Aufnahmen zeigt er deren Auftrag an. Gleichzeitige Foto-/Tiefenaufträge werden
 abgewiesen. Dienstverwaltung/Installation wie in [OAK4_PHOTOS.md](OAK4_PHOTOS.md).
 Kein zweiter permanenter Kameratreiber und kein neuer ROS-Build nötig.
+
+## Stereo-HDR für ruhende Szenen
+
+`depth_hdr` verwendet die native rektifizierte rechte Ansicht mit 1280×800
+Pixeln. Nach bestätigter Automatikmessung laufen auf derselben Kamera
+vier Blöcke mit je vier Stereo-Paaren. Bei ISO 200 werden kurze und lange
+Belichtungen (¼× und 4× der mittleren Zeit) sowie die mittlere Belichtung
+mit IR aus aufgenommen. Im letzten Block bleibt die mittlere Zeit
+eingestellt und der Punktprojektor läuft auf 100 %. Nach bestätigtem
+SDK-Befehl wartet die Aufnahme bis zur gemessenen Umschaltgrenze von
+350 ms auf der SDK-Bildzeitachse. Beim Ende der Kamerasitzung wird der
+Projektor ausgeschaltet.
+
+Je Einstellung braucht ein Pixel mindestens drei passende Messwerte
+innerhalb `max(10 mm, 1 % der Tiefe)` um den Median. Der zweite Median
+kombiniert pro Pixel die stabilen Einstellungen. Widersprechen sich
+diese Werte über der Toleranz, bleibt der Pixel ungültig. Die Vorschau
+markiert solche Konflikte magenta. Eine einzige stabile Einstellung
+kann Tiefe liefern, etwa am Kartonboden im aktiven Block.
+
+`standard-depth-mm.png` enthält ein mittleres, passives Einzelbild.
+`hq-depth-mm.png` enthält das Ergebnis der vier Einstellungen.
+Die unkomprimierte NPZ speichert die 16 Rohkarten als [4, 4, 800, 1280],
+Stufentiefen, Stufenzählwerte und Konfliktmaske verlustfrei. Die Reihenfolge,
+tatsächliche Belichtung beider Mono-Sensoren, Gerätestempel und Laufzeiten
+stehen in `metadata.json`. Ausgabegröße des geprüften Satzes ca. 53 MiB.
+Der Datensatz lässt sich mit `view-depth` anzeigen. Die Abdeckung ist
+szenenabhängig und vom absoluten Tiefenfehler getrennt zu bewerten.
 
 ## HQ-Punktwolke in RViz öffnen
 

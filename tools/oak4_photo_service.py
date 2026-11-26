@@ -14,6 +14,8 @@ import uuid
 
 TOOLS = Path(__file__).resolve().parent
 WORKSPACE = TOOLS.parents[2]
+MODES = ('standard', 'hq', 'compare', 'hdr', 'hdr_hq', 'charuco', 'depth_standard',
+         'depth_hq', 'depth_compare', 'depth_hdr', 'rgbd', 'rgbd_hdr', 'rgbd_hq')
 
 
 class PhotoCapture:
@@ -32,24 +34,28 @@ class PhotoCapture:
         with self.state_mutex:
             self.state.update(kwargs)
 
-    def capture(self, mode='hq', frames=None, iso=100, focus=None, search_config=None):
+    def capture(self, mode='hq', frames=None, iso=None, focus=None, search_config=None):
         depth = mode.startswith('depth_')
-        rgbd = mode == 'rgbd'
+        rgbd = mode in ('rgbd', 'rgbd_hdr', 'rgbd_hq')
         charuco = mode == 'charuco'
-        frames = (16 if depth else 1 if mode in ('hdr', 'charuco') else 8) if frames is None else frames
-        modes = ('standard', 'hq', 'compare', 'hdr', 'charuco', 'depth_standard', 'depth_hq', 'depth_compare', 'rgbd')
-        if mode not in modes or type(frames) is not int or not (4 if depth else 1) <= frames <= 32 or not 100 <= iso <= 1600:
+        defaults = dict(hdr=1, hdr_hq=6, depth_hdr=4, rgbd_hq=6, charuco=1)
+        frames = defaults.get(mode, 16 if depth else 8) if frames is None else frames
+        if iso is None:
+            iso = 400 if mode == 'hdr_hq' else 100
+        if mode not in MODES or type(frames) is not int or not (4 if depth else 1) <= frames <= 32 or not 100 <= iso <= 1600:
             raise ValueError('Invalid mode, frames (RGB 1..32, depth 4..32) or ISO (100..1600)')
         if mode == 'hdr' and frames > 8:
             raise ValueError('HDR supports 1..8 frames per exposure')
+        if mode in ('hdr_hq', 'depth_hdr', 'rgbd_hq') and frames != defaults[mode]:
+            raise ValueError(f'{mode} uses {defaults[mode]} frames per setting')
         if charuco and (frames != 1 or focus is not None):
             raise ValueError('ChArUco searches focus automatically; frames must be1 and --focus omitted')
         if search_config is not None and not charuco:
             raise ValueError('--search-config requires --mode charuco')
         if depth and iso != 100:
-            raise ValueError('--iso controls RGB only; depth uses locked mono auto-exposure')
+            raise ValueError('--iso controls RGB only; the depth profile controls mono exposure')
         if rgbd and iso != 100:
-            raise ValueError('RGB-D uses automatic exposure; --iso is not supported')
+            raise ValueError('RGB-D profiles choose the exposure settings; --iso is not supported')
         if focus is not None and (type(focus) is not int or not 0 <= focus <= 255 or depth):
             raise ValueError('--focus requires RGB and an integer 0..255')
         if not self.mutex.acquire(blocking=False):
@@ -101,6 +107,10 @@ class PhotoCapture:
                     command.extend(['--search-config', str(frozen_path)])
                 elif rgbd:
                     command.extend(['--focus', str(116 if focus is None else focus)])
+                    if mode == 'rgbd_hdr':
+                        command.append('--hdr')
+                    if mode == 'rgbd_hq':
+                        command.append('--hq')
                 elif not fixed_standard:
                     command.extend(['--mode', mode.removeprefix('depth_')])
                 if not depth and not rgbd and not fixed_standard:
@@ -130,7 +140,7 @@ class PhotoCapture:
                                       ('standard', 'hq_single', 'hq', 'hdr') if report.get(k, {}).get('path')},
                               exposure_limited=report.get('exposure_limited', False),
                               data_files={k: str(directory / v) for k, v in report.get('data_files', {}).items()})
-                if mode == 'hdr':
+                if mode in ('hdr', 'hdr_hq'):
                     result['brackets'] = {step['name']: str(directory / step['path'])
                                           for step in report['hdr_brackets']}
                 if charuco:
@@ -197,15 +207,15 @@ def serve(capture):
             return response
         return take
 
-    for mode in ('hq', 'standard', 'compare', 'hdr', 'charuco'):
+    for mode in ('hq', 'standard', 'compare', 'hdr', 'hdr_hq', 'charuco'):
         node.create_service(Trigger, f'photo/capture_{mode}', callback(mode), callback_group=group)
     node.create_service(Trigger, 'photo/status', snapshot, callback_group=group)
-    for mode in ('hq', 'standard', 'compare'):
+    for mode in ('hq', 'standard', 'compare', 'hdr'):
         node.create_service(Trigger, f'depth/capture_{mode}', callback('depth_' + mode), callback_group=group)
     node.create_service(Trigger, 'depth/status', snapshot, callback_group=group)
     executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
-    node.get_logger().info('READY: /oak4/photo/capture_hq, capture_standard, capture_compare, capture_hdr, capture_charuco; /oak4/depth/capture_hq, capture_standard, capture_compare; status (domain65)')
+    node.get_logger().info('READY: /oak4/photo and /oak4/depth capture services (domain65)')
     try:
         executor.spin()
     except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):
@@ -220,9 +230,9 @@ def serve(capture):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('serve', 'capture'))
-    parser.add_argument('--mode', choices=('hq', 'standard', 'compare', 'hdr', 'charuco', 'depth_hq', 'depth_standard', 'depth_compare', 'rgbd'), default='hq')
-    parser.add_argument('--frames', type=int, default=None, help='Defaults: RGB 8, HDR 1 per exposure (max 8), ChArUco 1 per hypothesis, depth 16')
-    parser.add_argument('--iso', type=int, default=100)
+    parser.add_argument('--mode', choices=MODES, default='hq')
+    parser.add_argument('--frames', type=int, default=None, help='Counts are per setting in HDR modes')
+    parser.add_argument('--iso', type=int, default=None)
     parser.add_argument('--focus', type=int, default=None, help='RGB manual lens position 0..255; omit for autofocus')
     parser.add_argument('--search-config', type=Path, help='ChArUco search JSON; defaults to config/oak4_charuco_search.json')
     args = parser.parse_args()

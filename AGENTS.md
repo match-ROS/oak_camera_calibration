@@ -1,5 +1,15 @@
 # OAK-Kamera: Arbeitsregeln
 
+- Nutzerauftrag 26.11.2026. Im vorhandenen Fotodienst die statischen Modi
+  `depth_hdr` (vier Stereo-Einstellungen mit je vier Frames, davon eine mit
+  100 % IR-Punktprojektor) und `hdr_hq` (sechs native RGB-Frames je drei
+  Belichtungen) anbieten. Geschwindigkeit mit der echten Kamera prüfen.
+  Bildanzahl, native Auflösung und Stabilitätsprüfung bei Optimierungen
+  erhalten. IR nur im dafür vorgesehenen Block und beim Ende ausschalten.
+  Statische Programme mit gemeinsamem RGB-/Tiefengitter nutzen `rgbd_hq`.
+  Dies ist ein zusammengesetzter, ausgerichteter Datensatz mit eigener
+  Projektionsmetadatei und Aufnahmezeiten pro Eingangsbild.
+
 - Nutzerauftrag 24.11.2026. In Fotoabläufen mit bekanntem festem Fokus
   Kamera-Neustarts vermeiden. Bei einzelnen OAK4-Aufnahmen Einlauf
   anhand der bestätigten Metadaten statt fester Pausen bestimmen.
